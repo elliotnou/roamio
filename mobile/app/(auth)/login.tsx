@@ -85,21 +85,6 @@ export default function LoginScreen() {
             <Text style={s.footerText}>Don't have an account? </Text>
             <Link href="/signup" style={s.link}>Create one</Link>
           </View>
-
-          <Pressable
-            style={[s.btn, { backgroundColor: '#888', marginTop: 20, marginHorizontal: 32 }]}
-            onPress={() => {
-              useTripStore.getState().setUser({
-                id: 'dev-user',
-                email: 'dev@test.com',
-                display_name: 'Dev User',
-                created_at: new Date().toISOString(),
-              });
-              router.replace('/(tabs)');
-            }}
-          >
-            <Text style={s.btnText}>Skip to App (Dev)</Text>
-          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
