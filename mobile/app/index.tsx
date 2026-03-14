@@ -16,6 +16,7 @@ export default function Index() {
 
     const boot = async () => {
       try {
+        console.log('index.tsx boot: racing session...');
         // Race session check against a 3s timeout so the app never hangs
         const result = await Promise.race([
           supabase.auth.getSession(),
@@ -28,12 +29,16 @@ export default function Index() {
             : null;
 
         if (session) {
+          console.log('index.tsx boot: session found, fetching data...');
           await fetchData();
+          console.log('index.tsx boot: router replace to tabs');
           router.replace('/(tabs)');
         } else {
+          console.log('index.tsx boot: no session, router replace to login');
           router.replace('/login');
         }
-      } catch {
+      } catch (err) {
+        console.log('index.tsx boot caught error:', err);
         router.replace('/login');
       }
     };
@@ -43,11 +48,15 @@ export default function Index() {
     // Listen for future auth changes (login / logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('index.tsx onAuthStateChange event:', event);
         if (event === 'INITIAL_SESSION') return;
         if (session) {
+          console.log('index.tsx onAuthStateChange: session exists, fetching data...');
           await fetchData();
+          console.log('index.tsx onAuthStateChange: router push to tabs');
           router.replace('/(tabs)');
         } else {
+          console.log('index.tsx onAuthStateChange: no session, router replace to login');
           router.replace('/login');
         }
       },

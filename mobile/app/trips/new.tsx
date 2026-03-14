@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTripStore } from '../../store/trip-store';
+import { fetchPlaceAutocomplete, PlaceAutocompleteItem } from '../../lib/places';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
@@ -33,6 +34,9 @@ export default function NewTripScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPicker, setShowPicker] = useState<'start' | 'end' | null>(null);
+  
+  const [suggestions, setSuggestions] = useState<PlaceAutocompleteItem[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const toggleVibe = (key: string) => {
     setSelectedVibes((prev) => {
@@ -85,7 +89,7 @@ export default function NewTripScreen() {
           </View>
 
           <View style={s.form}>
-            <View style={s.field}>
+            <View style={[s.field, { zIndex: 10 }]}>
               <Text style={s.label}>Where to?</Text>
               <View style={s.inputRow}>
                 <Feather name="map-pin" size={16} color={C.sage} />
@@ -94,9 +98,41 @@ export default function NewTripScreen() {
                   placeholder="e.g. Tokyo, Japan"
                   placeholderTextColor={C.placeholder}
                   value={destination}
-                  onChangeText={setDestination}
+                  onChangeText={(text) => {
+                    setDestination(text);
+                    if (text.length > 2) {
+                      setLoadingSuggestions(true);
+                      fetchPlaceAutocomplete(text).then((results) => {
+                        setSuggestions(results);
+                        setLoadingSuggestions(false);
+                      });
+                    } else {
+                      setSuggestions([]);
+                    }
+                  }}
                 />
+                {loadingSuggestions && <ActivityIndicator size="small" color={C.sage} />}
               </View>
+              {suggestions.length > 0 && (
+                <View style={s.suggestionsBox}>
+                  {suggestions.map((item) => (
+                    <Pressable
+                      key={item.placeId}
+                      style={s.suggestionItem}
+                      onPress={() => {
+                        setDestination(item.primaryText);
+                        setSuggestions([]);
+                      }}
+                    >
+                      <Feather name="map-pin" size={14} color={C.placeholder} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.suggestionPrimary}>{item.primaryText}</Text>
+                        {item.secondaryText ? <Text style={s.suggestionSecondary}>{item.secondaryText}</Text> : null}
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             <View style={s.dateRow}>
@@ -211,6 +247,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14,
   },
   input: { flex: 1, fontSize: 15, fontFamily: F.regular, color: C.fg },
+  suggestionsBox: {
+    position: 'absolute', top: 80, left: 0, right: 0,
+    backgroundColor: C.white, borderRadius: 16, paddingVertical: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 8,
+    borderWidth: 1, borderColor: C.border, zIndex: 20
+  },
+  suggestionItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.bg },
+  suggestionPrimary: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
+  suggestionSecondary: { fontSize: 12, fontFamily: F.regular, color: C.secondary, marginTop: 2 },
   dateRow: { flexDirection: 'row', gap: 12 },
   dateBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

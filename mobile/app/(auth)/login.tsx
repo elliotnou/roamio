@@ -24,22 +24,28 @@ export default function LoginScreen() {
     setLoading(true);
     
     try {
+      console.log('Attempting sign in:', email);
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
+        console.log('Sign in error:', signInError);
         setError(signInError.message);
         setLoading(false);
         return;
       }
-
+      
+      console.log('Sign in success, fetching data...');
       await fetchData();
-      router.replace('/(tabs)');
+      console.log('Data fetched, navigating...');
+      router.push('/(tabs)');
     } catch (e: any) {
+      console.error('Login exception:', e);
       setError(e.message || 'Something went wrong');
     } finally {
+      console.log('Sign in process finished.');
       setLoading(false);
     }
   };

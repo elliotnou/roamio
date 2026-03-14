@@ -25,6 +25,7 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     const { supabase } = await import('../../lib/supabase');
     await supabase.auth.signOut();
+    useTripStore.setState({ user: null as any, trips: [], activeTrip: null, activityBlocks: {}, checkIns: [] });
     router.replace('/login');
   };
 
