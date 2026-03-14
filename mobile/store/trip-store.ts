@@ -88,6 +88,82 @@ function mapAgentTypeToActivityType(type: AgentActivityType): ActivityType {
   }
 }
 
+function mapUiTypeToAgentType(type: ActivityType): AgentActivityType {
+  switch (type) {
+    case 'walking':
+      return 'walking_tour';
+    case 'restaurant':
+    case 'cafe':
+      return 'dining';
+    case 'landmark':
+      return 'sightseeing';
+    case 'spa':
+      return 'spa_wellness';
+    case 'gallery':
+      return 'cultural_event';
+    default:
+      if (
+        type === 'hiking' ||
+        type === 'museum' ||
+        type === 'shopping' ||
+        type === 'beach' ||
+        type === 'park' ||
+        type === 'cycling' ||
+        type === 'other'
+      ) {
+        return type;
+      }
+      return 'other';
+  }
+}
+
+function mapGoogleTypesToAgentType(types: string[]): AgentActivityType {
+  const set = new Set(types);
+  if (set.has('restaurant') || set.has('meal_takeaway') || set.has('meal_delivery') || set.has('cafe') || set.has('bakery')) return 'dining';
+  if (set.has('spa')) return 'spa_wellness';
+  if (set.has('park')) return 'park';
+  if (set.has('museum') || set.has('art_gallery')) return 'museum';
+  if (set.has('beach')) return 'beach';
+  if (set.has('tourist_attraction')) return 'sightseeing';
+  if (set.has('shopping_mall')) return 'shopping';
+  return 'other';
+}
+
+function estimateEnergyForAgentType(type: AgentActivityType): number {
+  switch (type) {
+    case 'spa_wellness':
+      return 2;
+    case 'park':
+    case 'museum':
+    case 'cultural_event':
+    case 'relaxation':
+      return 3;
+    case 'dining':
+      return 4;
+    case 'sightseeing':
+    case 'shopping':
+      return 5;
+    default:
+      return 4;
+  }
+}
+
+function getNearbyIncludedTypesForActivity(type: ActivityType): string[] {
+  if (type === 'restaurant' || type === 'cafe') {
+    return ['restaurant', 'cafe', 'bakery', 'meal_takeaway'];
+  }
+  if (type === 'museum' || type === 'gallery' || type === 'landmark') {
+    return ['museum', 'art_gallery', 'tourist_attraction', 'cafe'];
+  }
+  if (type === 'spa') {
+    return ['spa', 'cafe', 'park'];
+  }
+  if (type === 'park' || type === 'beach') {
+    return ['park', 'tourist_attraction', 'cafe'];
+  }
+  return ['park', 'museum', 'spa', 'cafe', 'tourist_attraction'];
+}
+
 interface CheckInFlowResult {
   needs_rerouting: boolean;
   affirmation_message: string | null;
@@ -537,15 +613,19 @@ export const useTripStore = create<TripStore>((set, get) => ({
       }
 
       // Fallback: fetch nearby places + run Gemini ranker directly on mobile
-      const nearbyPlaces = await fetchNearbyPlaces(currentLat, currentLng);
-      const candidates: NearbyPlaceCandidate[] = nearbyPlaces.map((p) => ({
-        place_id: p.placeId,
-        name: p.name,
-        activity_type: 'other' as const,
-        estimated_energy: 3, // Low energy default for alternatives
-        distance_meters: p.distanceMeters,
-        rating: p.rating,
-      }));
+      const includedTypes = getNearbyIncludedTypesForActivity(activityBlock.activity_type);
+      const nearbyPlaces = await fetchNearbyPlaces(currentLat, currentLng, 3000, includedTypes);
+      const candidates: NearbyPlaceCandidate[] = nearbyPlaces.map((p) => {
+        const mappedType = mapGoogleTypesToAgentType(p.types);
+        return {
+          place_id: p.placeId,
+          name: p.name,
+          activity_type: mappedType,
+          estimated_energy: estimateEnergyForAgentType(mappedType),
+          distance_meters: p.distanceMeters,
+          rating: p.rating,
+        };
+      });
 
       if (candidates.length === 0) {
         return {
@@ -566,7 +646,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
       );
 
       const rankerResult = await rankAlternatives({
-        current_activity_type: 'other',
+        current_activity_type: mapUiTypeToAgentType(activityBlock.activity_type),
         energy_level: energyLevel,
         energy_gap: classifierResult.energy_gap,
         time_remaining_minutes: timeRemainingMinutes,

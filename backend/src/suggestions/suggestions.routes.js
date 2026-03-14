@@ -111,7 +111,13 @@ router.post("/", async (req, res) => {
       classification,
       current_lat,
       current_lng,
-      destination
+      destination,
+      {
+        current_activity_type: blockContext.activity_type || "other",
+        current_place_id: blockContext.resolved_place_id || null,
+        current_place_name: blockContext.place_name || "",
+        current_resolved_place_name: blockContext.resolved_place_name || "",
+      }
     );
 
     // ─── If candidates available, rank them ───

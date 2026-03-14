@@ -83,6 +83,10 @@ export interface NearbyPlaceResult {
     lat: number;
     lng: number;
     rating: number | null;
+    userRatingCount: number | null;
+    types: string[];
+    openNow: boolean | null;
+    businessStatus: string | null;
     mapsUrl: string;
     distanceMeters: number;
 }
@@ -94,6 +98,10 @@ type NearbySearchResponse = {
         formattedAddress?: string;
         location?: { latitude?: number; longitude?: number };
         rating?: number;
+        userRatingCount?: number;
+        types?: string[];
+        currentOpeningHours?: { openNow?: boolean };
+        businessStatus?: string;
         googleMapsUri?: string;
     }>;
 };
@@ -111,6 +119,8 @@ export async function fetchNearbyPlaces(
     const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
     if (!key) return [];
 
+    const CLOSED_STATUSES = new Set(['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY']);
+
     try {
         const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
             method: 'POST',
@@ -118,7 +128,7 @@ export async function fetchNearbyPlaces(
                 'Content-Type': 'application/json',
                 'X-Goog-Api-Key': key,
                 'X-Goog-FieldMask':
-                    'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.googleMapsUri',
+                    'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.currentOpeningHours.openNow,places.businessStatus,places.googleMapsUri',
             },
             body: JSON.stringify({
                 includedTypes,
@@ -140,6 +150,8 @@ export async function fetchNearbyPlaces(
         const results: NearbyPlaceResult[] = [];
         for (const p of places) {
             if (!p.id || !p.displayName?.text) continue;
+            if (CLOSED_STATUSES.has(p.businessStatus || '')) continue;
+            if (p.currentOpeningHours?.openNow === false) continue;
 
             const placeLat = p.location?.latitude ?? lat;
             const placeLng = p.location?.longitude ?? lng;
@@ -156,6 +168,13 @@ export async function fetchNearbyPlaces(
                 lat: placeLat,
                 lng: placeLng,
                 rating: p.rating ?? null,
+                userRatingCount: p.userRatingCount ?? null,
+                types: p.types ?? [],
+                openNow:
+                    typeof p.currentOpeningHours?.openNow === 'boolean'
+                        ? p.currentOpeningHours.openNow
+                        : null,
+                businessStatus: p.businessStatus ?? null,
                 mapsUrl: p.googleMapsUri ?? `https://maps.google.com/?q=${placeLat},${placeLng}`,
                 distanceMeters,
             });

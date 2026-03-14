@@ -147,7 +147,7 @@ export function buildRankerPrompt({
   const candidateList = candidates
     .map(
       (c) =>
-        `  - place_id: "${c.place_id}", place_name: "${c.place_name}", activity_type: ${c.activity_type || "other"}, energy: ${c.estimated_energy || "?"}/10, distance_km: ${c.distance_km ?? "?"}, rating: ${c.rating ?? "N/A"}`
+        `  - place_id: "${c.place_id}", place_name: "${c.place_name}", activity_type: ${c.activity_type || "other"}, energy: ${c.estimated_energy || "?"}/10, distance_km: ${c.distance_km ?? "?"}, rating: ${c.rating ?? "N/A"}, user_rating_count: ${c.user_rating_count ?? "N/A"}`
     )
     .join("\n");
 
@@ -156,6 +156,8 @@ export function buildRankerPrompt({
 Rules:
 - You MUST only use place_ids that appear in the candidate list. Never invent locations.
 - Prefer candidates with lower energy cost that still match the traveller's interests.
+- If the original activity type is not "other", suggestions must stay in that same activity type.
+- For food-related alternatives, you may use lower user_rating_count as a rough proxy for a calmer venue when other factors are similar.
 - Consider distance (closer is better), rating (higher is better), and variety.
 - Each suggestion needs: "place_id", "place_name", "activity_type", "estimated_energy", "rank" (1 = best fit), "why_it_fits" (one-line explanation), "energy_cost_label" (one of "very low", "low", "moderate").
 - Return between 3 and 5 suggestions ordered by rank.

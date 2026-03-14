@@ -4,6 +4,63 @@
 import { supabaseForUser } from "../config/supabase.js";
 import { callGemini, buildPlaceResolverPrompt } from "../config/gemini.js";
 
+const PLACE_DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places";
+
+function mapPlaceTypesToActivityType(types = []) {
+  const set = new Set(types.filter(Boolean));
+  if (set.has("restaurant") || set.has("meal_takeaway") || set.has("meal_delivery")) return "restaurant";
+  if (set.has("cafe") || set.has("coffee_shop") || set.has("bakery")) return "cafe";
+  if (set.has("park")) return "park";
+  if (set.has("spa")) return "spa";
+  if (set.has("museum")) return "museum";
+  if (set.has("art_gallery")) return "gallery";
+  if (set.has("tourist_attraction")) return "landmark";
+  if (set.has("shopping_mall")) return "shopping";
+  if (set.has("beach")) return "beach";
+  if (set.has("hiking_area")) return "hiking";
+  return "other";
+}
+
+async function fetchGooglePlaceType(placeId) {
+  const apiKey =
+    process.env.GOOGLE_PLACES_API_KEY ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ||
+    process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey || !placeId) return null;
+
+  try {
+    const response = await fetch(
+      `${PLACE_DETAILS_ENDPOINT}/${encodeURIComponent(placeId)}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "id,displayName,primaryType,types",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const place = await response.json();
+    const mappedType = mapPlaceTypesToActivityType([
+      place?.primaryType,
+      ...(Array.isArray(place?.types) ? place.types : []),
+    ]);
+
+    return {
+      activity_type: mappedType,
+      resolved_place_name: place?.displayName?.text || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function toBlockDateTime(baseDate, dayIndex, timeValue) {
   if (!timeValue) return timeValue;
   if (typeof timeValue === "string" && timeValue.includes("T")) {
@@ -93,12 +150,23 @@ export async function createActivityBlock(user, body, trip) {
     resolved_lng: body.resolved_lng || null,
   };
 
+  // Prefer Google place-type mapping when a concrete place_id is available.
+  if (row.resolved_place_id) {
+    const placeType = await fetchGooglePlaceType(row.resolved_place_id);
+    if (placeType?.activity_type && placeType.activity_type !== "other") {
+      row.activity_type = placeType.activity_type;
+    }
+    if (placeType?.resolved_place_name && !row.resolved_place_name) {
+      row.resolved_place_name = placeType.resolved_place_name;
+    }
+  }
+
   // Run Gemini place resolver to enrich the row
   try {
     const prompt = buildPlaceResolverPrompt(body.place_name, trip.destination);
     const resolved = await callGemini(prompt);
 
-    if (resolved?.activity_type) {
+    if (resolved?.activity_type && (!row.activity_type || row.activity_type === "other")) {
       row.activity_type = resolved.activity_type;
     }
     if (typeof resolved?.energy_cost_estimate === "number") {

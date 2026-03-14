@@ -16,6 +16,12 @@ const VALID_ACTIVITY_TYPES = new Set([
   "other",
 ]);
 
+function normalizeActivityType(activityType) {
+  if (!activityType || typeof activityType !== "string") return "other";
+  const lowered = activityType.trim().toLowerCase();
+  return VALID_ACTIVITY_TYPES.has(lowered) ? lowered : "other";
+}
+
 // ─── Classifier ───
 
 /**
@@ -119,10 +125,16 @@ export async function rankAlternatives({
   // Build allowed place_id set from input candidates
   const allowedIds = new Set(candidates.map((c) => c.place_id));
   const candidateById = new Map(candidates.map((c) => [c.place_id, c]));
+  const normalizedCurrentType = normalizeActivityType(currentActivityType);
 
   // Validate and normalize each suggestion
   const validated = result.suggestions
     .filter((s) => s && allowedIds.has(s.place_id)) // reject hallucinated IDs
+    .filter((s) => {
+      if (normalizedCurrentType === "other") return true;
+      const candidate = candidateById.get(s.place_id);
+      return (candidate?.activity_type || "other") === normalizedCurrentType;
+    })
     .slice(0, 5)
     .map((s, i) => {
       const candidate = candidateById.get(s.place_id) || {};
@@ -135,7 +147,7 @@ export async function rankAlternatives({
       return {
         place_id: s.place_id,
         place_name: s.place_name || s.name || candidate.place_name || candidate.name || "",
-        activity_type: VALID_ACTIVITY_TYPES.has(s.activity_type) ? s.activity_type : (candidate.activity_type || "other"),
+        activity_type: normalizeActivityType(candidate.activity_type),
         estimated_energy: estimatedEnergy,
         rank: s.rank || i + 1,
         why_it_fits: s.why_it_fits || s.reason || "",
