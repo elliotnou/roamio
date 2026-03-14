@@ -1,0 +1,748 @@
+TripPulse — Agentic Wellness Travel Companion
+GenAI Genesis Hackathon | Sun Life Best Health Care Hack Using Agentic AI
+
+Project Vision
+TripPulse is a mobile wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, TripPulse treats your physical and mental state as first-class data — building a personal fatigue profile over time and proactively adapting your plans before burnout happens.
+
+Agentic AI Architecture
+This is the core of the GenAI story. Gemini does not just answer a single prompt — it runs a multi-step agent loop with distinct responsibilities:
+Check-In Trigger
+      │
+      ▼
+┌─────────────────────┐
+│  ENERGY INTAKE      │  User reports energy level (1–10) + current location
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  CONTEXT BUILDER    │  Pulls: remaining itinerary blocks, past check-ins,
+│  (Agent Step 1)     │  time of day, fatigue pattern history for this user
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  INTENT CLASSIFIER  │  Determines: does this user need rerouting?
+│  (Agent Step 2)     │  (energy ≤ 6 → yes; energy 7–10 → affirmation path)
+└────────┬────────────┘
+         │
+    ┌────┴────┐
+    │         │
+   LOW      HIGH
+    │         │
+    ▼         ▼
+┌────────┐  ┌──────────────────┐
+│AFFIRM  │  │ PLACE RESOLVER   │  Extracts structured place data from
+│AGENT   │  │ (Agent Step 3)   │  itinerary text → Google Places ID
+└────────┘  └────────┬─────────┘
+                     │
+                     ▼
+            ┌─────────────────────┐
+            │ ALTERNATIVE FINDER  │  Gemini reasons over: activity type,
+            │ (Agent Step 4)      │  energy delta needed, proximity,
+            │                     │  time remaining in block, user history
+            └────────┬────────────┘
+                     │
+                     ▼
+            ┌─────────────────────┐
+            │ CARD RANKER         │  Scores and ranks 3–5 alternatives,
+            │ (Agent Step 5)      │  each with place name, Maps link,
+            │                     │  energy cost label, why-it-fits blurb
+            └────────┬────────────┘
+                     │
+                     ▼
+              UI Card Swiper
+Each agent step is a separate Gemini call with explicit structured output (JSON schema enforced), making the reasoning chain inspectable and demo-able.
+
+Tech Stack
+LayerTechnologyFrontendExpo + React Native (TypeScript)Backend / DBSupabase (Postgres + Auth + Realtime)AIGemini 2.0 Flash (via Google AI SDK)LocationExpo Location + Google Places API (New)NotificationsExpo Notifications (post-MVP)StateZustandFormsReact Hook FormNavigationExpo Router (file-based)
+
+Data Models (TypeScript + Supabase schema)
+typescript// auth.users is managed by Supabase Auth
+
+interface User {
+  id: string;           // FK → auth.users
+  email: string;
+  display_name: string;
+  created_at: string;
+}
+
+interface Trip {
+  id: string;
+  user_id: string;      // FK → users
+  destination: string;
+  start_date: string;   // ISO date
+  end_date: string;
+  created_at: string;
+}
+
+interface ActivityBlock {
+  id: string;
+  trip_id: string;      // FK → trips
+  place_name: string;   // raw user input e.g. "Banff Upper Hot Springs"
+  resolved_place_id: string | null;  // Google Places ID, resolved by Gemini agent
+  resolved_place_name: string | null;
+  resolved_lat: number | null;
+  resolved_lng: number | null;
+  activity_type: string | null;      // e.g. "hiking", "museum", "restaurant"
+  energy_cost_estimate: number | null; // 1–10, Gemini-assigned
+  start_time: string;   // ISO datetime
+  end_time: string;
+  day_index: number;    // which day of trip (0-indexed)
+}
+
+interface CheckIn {
+  id: string;
+  activity_block_id: string;  // FK → activity_blocks
+  user_id: string;
+  energy_level: number;       // 1–10
+  current_lat: number;
+  current_lng: number;
+  suggestions_shown: boolean;
+  selected_suggestion_place_id: string | null;
+  timestamp: string;
+}
+
+// Derived / in-memory (not persisted for MVP)
+interface ActivitySuggestion {
+  place_id: string;
+  place_name: string;
+  address: string;
+  maps_url: string;
+  energy_cost_label: 'low' | 'moderate';
+  why_it_fits: string;        // Gemini-generated 1-sentence rationale
+  distance_km: number;
+  walking_minutes: number | null;
+}
+
+Supabase Schema (SQL)
+sql-- Run in Supabase SQL editor
+
+create table public.users (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  display_name text,
+  created_at timestamptz default now()
+);
+
+create table public.trips (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete cascade,
+  destination text not null,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz default now()
+);
+
+create table public.activity_blocks (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid references public.trips(id) on delete cascade,
+  place_name text not null,
+  resolved_place_id text,
+  resolved_place_name text,
+  resolved_lat numeric,
+  resolved_lng numeric,
+  activity_type text,
+  energy_cost_estimate integer check (energy_cost_estimate between 1 and 10),
+  start_time timestamptz not null,
+  end_time timestamptz not null,
+  day_index integer not null,
+  created_at timestamptz default now()
+);
+
+create table public.check_ins (
+  id uuid primary key default gen_random_uuid(),
+  activity_block_id uuid references public.activity_blocks(id) on delete cascade,
+  user_id uuid references public.users(id) on delete cascade,
+  energy_level integer not null check (energy_level between 1 and 10),
+  current_lat numeric not null,
+  current_lng numeric not null,
+  suggestions_shown boolean default false,
+  selected_suggestion_place_id text,
+  timestamp timestamptz default now()
+);
+
+-- RLS
+alter table public.users enable row level security;
+alter table public.trips enable row level security;
+alter table public.activity_blocks enable row level security;
+alter table public.check_ins enable row level security;
+
+create policy "Users own their data" on public.users for all using (auth.uid() = id);
+create policy "Users own their trips" on public.trips for all using (auth.uid() = user_id);
+create policy "Users own their blocks" on public.activity_blocks for all
+  using (exists (select 1 from public.trips where id = trip_id and user_id = auth.uid()));
+create policy "Users own their check-ins" on public.check_ins for all using (auth.uid() = user_id);
+```
+
+---
+
+## Gemini Agent Prompts (Exact Contracts)
+
+### Agent Step 1–2: Context Builder + Intent Classifier
+```
+System: You are a travel wellness AI. Given a traveller's current state, 
+determine whether they need alternative activity suggestions.
+
+User: {
+  "energy_level": 4,
+  "current_time": "2026-03-14T14:30:00",
+  "current_activity": {
+    "place_name": "Banff Upper Hot Springs",
+    "activity_type": "hiking",
+    "energy_cost_estimate": 8,
+    "end_time": "2026-03-14T16:00:00"
+  },
+  "remaining_blocks_today": [...],
+  "past_checkins_today": [{"energy_level": 6, "timestamp": "..."}]
+}
+
+Respond ONLY with valid JSON:
+{
+  "needs_rerouting": true,
+  "energy_gap": 4,
+  "reasoning": "one sentence"
+}
+```
+
+### Agent Step 3: Place Resolver
+```
+System: You are a location extraction agent. Given a freeform activity 
+description and destination city, return the most likely Google Places 
+search query and activity classification.
+
+User: {
+  "place_name": "that big art museum downtown",
+  "destination": "Toronto, Canada"
+}
+
+Respond ONLY with valid JSON:
+{
+  "google_places_query": "Art Gallery of Ontario Toronto",
+  "activity_type": "museum",
+  "energy_cost_estimate": 4
+}
+```
+
+### Agent Step 4–5: Alternative Finder + Card Ranker
+```
+System: You are a travel rerouting agent. The traveller is low-energy. 
+Suggest 3–5 nearby alternative activities that are less physically demanding 
+than their current plan, suit their location, and can be completed in the 
+remaining time block.
+
+User: {
+  "current_activity_type": "hiking",
+  "energy_level": 3,
+  "current_location": { "lat": 51.1784, "lng": -115.5708 },
+  "time_remaining_minutes": 90,
+  "destination": "Banff, Alberta",
+  "nearby_places": [...] // pre-fetched from Google Places API
+}
+
+Respond ONLY with valid JSON array:
+[
+  {
+    "place_name": "Banff Legacy Trail Viewpoint",
+    "place_id": "ChIJ...",
+    "energy_cost_label": "low",
+    "why_it_fits": "Flat paved path with mountain views — no elevation gain.",
+    "distance_km": 1.2
+  }
+]
+```
+
+---
+
+## App Screen Map (Expo Router file structure)
+```
+app/
+├── (auth)/
+│   ├── login.tsx          # Email/password + Google OAuth via Supabase
+│   └── signup.tsx
+├── (tabs)/
+│   ├── index.tsx          # Dashboard — active trip, today's blocks, check-in CTA
+│   ├── trips.tsx          # All trips list
+│   └── profile.tsx        # User info, sign out
+├── trips/
+│   ├── new.tsx            # Create trip form
+│   └── [tripId]/
+│       ├── index.tsx      # Trip detail, day-by-day view
+│       └── itinerary.tsx  # Add/edit activity blocks
+├── checkin/
+│   ├── [blockId].tsx      # Energy slider screen
+│   └── suggestions.tsx    # Swipeable card results
+└── _layout.tsx
+```
+
+---
+
+## Build Order (Incremental — Tell Claude Code to Follow This Exactly)
+
+### Phase 1 — Foundation (get this green before anything else)
+1. Expo project init with TypeScript, Expo Router, Zustand
+2. Supabase client setup + env vars
+3. Auth screens (login, signup) wired to Supabase Auth
+4. Auto-redirect based on session state
+5. Basic tab navigator shell
+
+### Phase 2 — Trip & Itinerary Data
+6. Create trip form → writes to `trips` table
+7. Trip list screen reads from Supabase
+8. Add activity block form (place name, start/end time) → writes to `activity_blocks`
+9. **Gemini Place Resolver** fires on block save → populates `resolved_place_id`, `activity_type`, `energy_cost_estimate`
+10. Day-grouped itinerary view
+
+### Phase 3 — Dashboard & Check-In Core
+11. Dashboard detects active block based on current time
+12. Check-in button → energy slider screen (emoji knob, 1–10)
+13. Check-in writes to `check_ins` table with GPS location
+14. **Gemini Intent Classifier** runs → decides rerouting needed or not
+15. If high energy: affirmation screen ("You're crushing it — enjoy the hike!")
+
+### Phase 4 — Agentic Suggestion Engine
+16. Google Places Nearby Search fires with current location + activity type
+17. **Gemini Alternative Finder** receives Places results + context → returns ranked cards
+18. Swipeable card UI (React Native Swiper or Reanimated gesture)
+19. Card shows: place name, energy label, why-it-fits blurb, Google Maps deep link
+20. User selection recorded in `check_ins.selected_suggestion_place_id`
+
+### Phase 5 — Polish for Demo
+21. Onboarding flow for first-time users
+22. Empty states, loading skeletons, error boundaries
+23. Smooth animations on energy slider and card swipe
+24. PROGRESS.md and BLOCKERS.md up to date
+
+---
+
+## Environment Variables
+```
+EXPO_PUBLIC_SUPABASE_URL=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=
+EXPO_PUBLIC_GEMINI_API_KEY=
+EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
+Note: for a hackathon, Gemini calls can be made client-side. For production these move to a Supabase Edge Function.
+
+What Makes This Impressive for Judges
+
+Multi-step agentic loop — not a single prompt but a chain of specialized Gemini agents with defined inputs/outputs and inspectable intermediate state
+Structured output enforcement — every Gemini call returns typed JSON, making the system robust and debuggable
+Real health signal — energy level is treated as a genuine wellness metric with longitudinal tracking, not just a preference toggle
+Adaptive, not reactive — the system uses past check-in history to build a fatigue profile, not just respond to the current moment
+Concrete physical health impact — prevents overexertion for anxious or first-time travellers, directly fitting the Sun Life track
+
+
+PROGRESS.md Template (seed this at project start)
+markdown# TripPulse — Build Progress
+
+## Done
+- [ ] Project scaffolded
+
+## In Progress
+- [ ] Auth screens
+
+## Next
+- [ ] Trip creation form
+
+## Blockers
+See BLOCKERS.md
+
+Feed this to Claude Code and tell it to start at Phase 1, Step 1 and confirm each step compiles before moving forward. The agent prompt contracts in particular will save you a ton of back-and-forth during the hackathon.rewrite but mention that it should start with a web app we will move it over to like mobile, react native later (so it should be easily transferrable). further, if some parts of the idea are bad and not sound you can polish and refine.10:34 AMTripPulse — Agentic Wellness Travel Companion
+GenAI Genesis Hackathon | Sun Life Best Health Care Hack Using Agentic AI
+
+Project Vision
+TripPulse is a wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, TripPulse treats your physical and mental state as first-class data — adapting your plans before burnout happens, not after.
+Hackathon build target: React web app (Next.js). All logic, data models, and AI contracts are designed for a clean lift to Expo + React Native after the hackathon. Shared business logic lives in framework-agnostic utility files; only the UI layer is web-specific.
+
+Refined Scope Decisions
+A few things from the original spec worth cleaning up before building:
+Dropped for MVP:
+
+Pattern/fatigue profile tracking — interesting long-term but requires multiple trips of data to be meaningful. A demo won't have this. Cut it.
+Google Calendar ingestion — adds OAuth complexity with low demo payoff. Cut it.
+Notifications — post-MVP only, irrelevant for web anyway.
+
+Refined:
+
+The "if energy is high, show an affirmation" path is fine for UX but shouldn't call the full agent pipeline. The intent classifier short-circuits immediately and returns a canned positive response — no wasted Gemini calls.
+The Place Resolver running at itinerary-creation time (not check-in time) is the right call. Resolve once, store the result, use it everywhere. Don't re-resolve at check-in.
+Energy slider emojis: keep them, they're good for the demo. But cap the emoji set at 5 distinct states mapped across the 1–10 range rather than 10 unique ones — cleaner visually.
+Card swiper for suggestions: on web, implement as a horizontal scroll with keyboard/click navigation. The swipe gesture translates directly to React Native later with a library swap only.
+
+
+Agentic AI Architecture
+This is the core of the GenAI story. Gemini runs a multi-step agent loop with distinct, inspectable steps — not a single monolithic prompt.
+User checks in (energy level + GPS)
+           │
+           ▼
+┌──────────────────────┐
+│  CONTEXT ASSEMBLER   │  Pulls: current block, remaining blocks today,
+│                      │  prior check-ins this trip, time remaining
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  INTENT CLASSIFIER   │  Input: energy level + context
+│  (Gemini call 1)     │  Output: { needs_rerouting: bool, reasoning: string }
+└──────────┬───────────┘
+           │
+      ┌────┴─────┐
+   energy      energy
+    ≤ 6         > 6
+      │           │
+      │           ▼
+      │     ┌───────────┐
+      │     │  AFFIRM   │  Return positive message, no further calls
+      │     └───────────┘
+      ▼
+┌──────────────────────┐
+│  PLACES FETCHER      │  Google Places Nearby Search:
+│  (API call)          │  current location + activity_type → raw candidates
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  ALTERNATIVE RANKER  │  Input: candidates + user context + energy gap
+│  (Gemini call 2)     │  Output: ranked array of 3–5 suggestion cards
+└──────────┬───────────┘
+           │
+           ▼
+     Suggestion Cards UI
+Two Gemini calls total per check-in. Both return strict JSON. The intermediate Places API call is deterministic — Gemini only does reasoning, never hallucinating location data.
+Why this is agentic and not just a chatbot: Each step has a defined role, typed inputs/outputs, and depends on the output of the prior step. The system makes decisions (reroute or affirm), calls external tools (Places API), then synthesizes results — all without user involvement after the initial slider input.
+
+Tech Stack
+Hackathon (Web)
+LayerTechnologyNotesFrontendNext.js 14 (App Router) + TypeScriptStylingTailwind CSS + shadcn/uiComponents map cleanly to RN equivalentsBackendNext.js API RoutesThin — mostly Supabase direct + Gemini callsDatabaseSupabase (Postgres + Auth)Identical in mobileAIGemini 2.0 Flash via @google/generative-aiSame SDK works in RNLocationBrowser Geolocation APISwap to expo-location in RNMapsGoogle Places API (New) + Maps embedSwap to Maps SDK in RNStateZustandWorks in RN unchangedFormsReact Hook Form + ZodWorks in RN unchanged
+Post-Hackathon (Mobile)
+Swap only: Next.js → Expo Router, Tailwind/shadcn → NativeWind + custom components, Browser Geolocation → expo-location, Maps embed → react-native-maps. Everything else — Supabase, Gemini, Zustand, RHF, all business logic — is identical.
+
+Data Models
+typescript// ── users ────────────────────────────────────────────────────────────────
+interface User {
+  id: string;            // FK → auth.users (Supabase manages this)
+  email: string;
+  display_name: string;
+  created_at: string;
+}
+
+// ── trips ─────────────────────────────────────────────────────────────────
+interface Trip {
+  id: string;
+  user_id: string;
+  destination: string;   // freeform city/region e.g. "Banff, Alberta"
+  start_date: string;    // ISO date "2026-06-01"
+  end_date: string;
+  created_at: string;
+}
+
+// ── activity_blocks ───────────────────────────────────────────────────────
+// One row per planned activity. Resolved place data populated by Gemini
+// at creation time — never re-resolved at check-in.
+interface ActivityBlock {
+  id: string;
+  trip_id: string;
+  day_index: number;            // 0-indexed day within trip
+  place_name: string;           // raw user input: "that hot springs place"
+  resolved_place_id: string | null;    // Google Places ID
+  resolved_place_name: string | null;  // canonical name
+  resolved_lat: number | null;
+  resolved_lng: number | null;
+  activity_type: ActivityType;  // enum — drives suggestion logic
+  energy_cost_estimate: number; // 1–10, Gemini-assigned at creation
+  start_time: string;           // ISO datetime
+  end_time: string;
+}
+
+type ActivityType =
+  | 'hiking' | 'walking' | 'cycling'       // outdoors active
+  | 'museum' | 'gallery' | 'landmark'       // cultural low-energy
+  | 'restaurant' | 'cafe'                   // food
+  | 'shopping' | 'market'                   // light exploration
+  | 'spa' | 'park' | 'beach'               // rest-oriented
+  | 'other';
+
+// ── check_ins ─────────────────────────────────────────────────────────────
+// One per user check-in action. Suggestions are ephemeral (not persisted)
+// except for the one the user selects.
+interface CheckIn {
+  id: string;
+  activity_block_id: string;
+  user_id: string;
+  energy_level: number;                        // 1–10
+  current_lat: number;
+  current_lng: number;
+  agent_outcome: 'affirmed' | 'rerouted' | 'dismissed'; // dismissed = shown cards, picked none
+  selected_place_id: string | null;            // if they picked a suggestion
+  selected_place_name: string | null;
+  timestamp: string;
+}
+
+Supabase Schema
+sqlcreate table public.users (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  display_name text,
+  created_at timestamptz default now()
+);
+
+create table public.trips (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  destination text not null,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz default now()
+);
+
+create table public.activity_blocks (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  day_index integer not null,
+  place_name text not null,
+  resolved_place_id text,
+  resolved_place_name text,
+  resolved_lat numeric(10,6),
+  resolved_lng numeric(10,6),
+  activity_type text not null default 'other',
+  energy_cost_estimate integer check (energy_cost_estimate between 1 and 10),
+  start_time timestamptz not null,
+  end_time timestamptz not null,
+  created_at timestamptz default now()
+);
+
+create table public.check_ins (
+  id uuid primary key default gen_random_uuid(),
+  activity_block_id uuid not null references public.activity_blocks(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  energy_level integer not null check (energy_level between 1 and 10),
+  current_lat numeric(10,6) not null,
+  current_lng numeric(10,6) not null,
+  agent_outcome text check (agent_outcome in ('affirmed', 'rerouted', 'dismissed')),
+  selected_place_id text,
+  selected_place_name text,
+  timestamp timestamptz default now()
+);
+
+-- Row Level Security
+alter table public.users enable row level security;
+alter table public.trips enable row level security;
+alter table public.activity_blocks enable row level security;
+alter table public.check_ins enable row level security;
+
+create policy "own_user" on public.users for all using (auth.uid() = id);
+create policy "own_trips" on public.trips for all using (auth.uid() = user_id);
+create policy "own_blocks" on public.activity_blocks for all
+  using (exists (
+    select 1 from public.trips where id = trip_id and user_id = auth.uid()
+  ));
+create policy "own_checkins" on public.check_ins for all using (auth.uid() = user_id);
+
+Gemini Agent Contracts
+All calls use responseMimeType: "application/json" — no parsing fragility.
+Call 1 — Intent Classifier
+Purpose: Decide in one call whether rerouting is needed. Short-circuits the pipeline if energy is fine.
+typescript// Input shape
+interface ClassifierInput {
+  energy_level: number;
+  current_time: string;           // ISO
+  current_block: {
+    place_name: string;
+    activity_type: ActivityType;
+    energy_cost_estimate: number;
+    end_time: string;
+  };
+  remaining_blocks_today: Array<{
+    place_name: string;
+    activity_type: ActivityType;
+    start_time: string;
+    end_time: string;
+  }>;
+  prior_checkins_this_trip: Array<{
+    energy_level: number;
+    timestamp: string;
+  }>;
+}
+
+// Output shape (Gemini returns this exactly)
+interface ClassifierOutput {
+  needs_rerouting: boolean;
+  energy_gap: number;             // how far below the activity's demand (0 if affirming)
+  affirmation_message: string | null;   // populated if needs_rerouting = false
+  reasoning: string;             // one sentence — shown in dev/debug panel
+}
+```
+```
+System prompt:
+You are a travel wellness agent. A traveller has just reported their energy level
+mid-trip. Given their current state and planned activities, decide if they need
+alternative suggestions.
+
+Reroute if: energy_level is more than 2 points below the current activity's
+energy_cost_estimate, OR energy_level is 4 or below regardless.
+
+If not rerouting, write a warm, specific affirmation_message referencing their
+actual activity (e.g. "You're in great shape for the hot springs — enjoy it!").
+If rerouting, set affirmation_message to null.
+
+Return ONLY valid JSON matching the schema. No prose, no markdown.
+
+Call 2 — Alternative Ranker
+Purpose: Given pre-fetched Places candidates, reason over which ones best fit the user's energy state, time window, and activity style. Gemini does reasoning only — location data comes from the API.
+typescript// Input shape
+interface RankerInput {
+  current_activity_type: ActivityType;
+  energy_level: number;
+  energy_gap: number;             // from classifier output
+  time_remaining_minutes: number;
+  destination: string;
+  candidates: Array<{             // raw from Google Places Nearby Search
+    place_id: string;
+    name: string;
+    types: string[];              // Google's place type array
+    rating: number | null;
+    user_ratings_total: number | null;
+    distance_meters: number;
+  }>;
+}
+
+// Output shape
+interface RankerOutput {
+  suggestions: Array<{
+    place_id: string;             // must match a candidate's place_id exactly
+    place_name: string;
+    energy_cost_label: 'very low' | 'low' | 'moderate';
+    why_it_fits: string;         // 1 sentence, specific and warm
+    estimated_duration_minutes: number;
+  }>;
+}
+```
+```
+System prompt:
+You are a travel rerouting agent. The traveller is low on energy and needs
+gentler alternatives to their current plan. You have a list of nearby places
+from the Google Places API.
+
+Select 3–5 candidates that:
+- Are meaningfully less physically demanding than the original activity
+- Can realistically be done in the time_remaining_minutes window
+- Are varied in type (don't return 3 cafes)
+- Have a rating of at least 3.5 if available
+
+For each, write a why_it_fits sentence that is warm and specific — not generic.
+Bad: "This is a relaxing option." Good: "A flat waterfront walk with great views,
+no elevation and no time pressure."
+
+IMPORTANT: Only use place_ids from the candidates list. Do not invent locations.
+Return ONLY valid JSON. No prose, no markdown.
+```
+
+---
+
+## File Structure (Web — Next.js)
+```
+src/
+├── app/
+│   ├── (auth)/
+│   │   ├── login/page.tsx
+│   │   └── signup/page.tsx
+│   ├── (app)/
+│   │   ├── layout.tsx              # Auth guard, nav shell
+│   │   ├── dashboard/page.tsx      # Active trip + today's blocks + check-in CTA
+│   │   ├── trips/
+│   │   │   ├── page.tsx            # All trips list
+│   │   │   ├── new/page.tsx        # Create trip
+│   │   │   └── [tripId]/
+│   │   │       ├── page.tsx        # Trip detail, day view
+│   │   │       └── itinerary/page.tsx  # Add/edit activity blocks
+│   │   └── profile/page.tsx
+│   └── api/
+│       ├── resolve-place/route.ts      # Gemini Place Resolver (called at block creation)
+│       ├── checkin/route.ts            # Orchestrates classifier → places → ranker
+│       └── places-nearby/route.ts     # Google Places Nearby Search proxy
+│
+├── lib/
+│   ├── gemini.ts               # Gemini client + typed call wrappers
+│   ├── supabase.ts             # Supabase browser client
+│   ├── supabase-server.ts      # Supabase server client (for API routes)
+│   ├── places.ts               # Google Places API calls
+│   └── agent/
+│       ├── classifier.ts       # Intent classifier logic (framework-agnostic)
+│       ├── ranker.ts           # Alternative ranker logic (framework-agnostic)
+│       └── resolve.ts          # Place resolver logic (framework-agnostic)
+│
+├── components/
+│   ├── ui/                     # shadcn primitives
+│   ├── energy-slider.tsx       # Emoji slider — 5 emoji states across 1–10
+│   ├── suggestion-card.tsx     # Single suggestion card
+│   ├── suggestion-carousel.tsx # Horizontal scroll of cards
+│   ├── activity-block-form.tsx # Add/edit an activity block
+│   ├── trip-card.tsx
+│   └── day-view.tsx            # One day's itinerary blocks
+│
+├── store/
+│   └── trip-store.ts           # Zustand — active trip, today's blocks, check-in state
+│
+└── types/
+    └── index.ts                # All shared TypeScript interfaces (matches RN later)
+Note: lib/agent/ contains zero Next.js or browser dependencies. These files move to a React Native project unchanged.
+
+Build Order
+Claude Code should complete each phase fully before starting the next. After each numbered step, run the dev server and confirm no console errors.
+Phase 1 — Project Shell
+
+Init Next.js 14 with TypeScript, Tailwind, App Router, shadcn/ui
+Supabase client setup (lib/supabase.ts, lib/supabase-server.ts), env vars
+Auth screens — login and signup wired to Supabase email auth
+Auth guard in (app)/layout.tsx — redirect to login if no session
+Basic nav shell with links to dashboard, trips, profile
+
+Phase 2 — Trip & Itinerary
+
+Trip list page reads from Supabase, shows empty state
+Create trip form (destination, start/end date) → writes to trips
+Activity block form (place name, start/end time) → writes to activity_blocks with resolved_* fields null initially
+Wire api/resolve-place → calls Gemini Place Resolver → updates block row with resolved fields + activity_type + energy_cost_estimate
+Day-grouped itinerary view under trip detail page
+
+Phase 3 — Dashboard & Check-In
+
+Dashboard reads active trip, computes active block from current time
+"Check In" button → energy slider page with emoji states
+api/checkin route — Step 1: runs Intent Classifier
+If needs_rerouting = false: show affirmation screen, write check-in with agent_outcome: 'affirmed'
+
+Phase 4 — Suggestion Engine
+
+If rerouting needed: api/places-nearby fires with current GPS + activity_type
+Results passed to Alternative Ranker (Gemini call 2)
+Suggestion cards rendered in horizontal carousel
+Each card: place name, energy label, why-it-fits blurb, Google Maps link
+User selects or dismisses — check-in written with agent_outcome and selected_place_id
+
+Phase 5 — Demo Polish
+
+Loading states on all async operations (skeleton cards, spinner on check-in)
+Empty states everywhere (no trips, no blocks, no suggestions found)
+Mobile-responsive layout (the web app should already feel like a mobile app — single column, touch-friendly tap targets)
+Error boundaries on API routes with user-facing messages
+Seed script with a realistic demo trip so judges can see a populated state immediately
+
+
+Environment Variables
+bashNEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=       # server-side only, never exposed to client
+GEMINI_API_KEY=                  # server-side only
+GOOGLE_PLACES_API_KEY=           # server-side only
+Gemini and Places calls go through Next.js API routes — keys never hit the client. This pattern also mirrors what becomes a Supabase Edge Function in the mobile version.
+
+React Native Migration Map
+Web (Now)Mobile (Later)EffortNext.js App RouterExpo RouterFile structure is nearly identicalTailwind + shadcnNativeWind + custom componentsUI rewrite, logic unchangedlib/agent/*.tsCopy as-isZero changesstore/, types/Copy as-isZero changesBrowser Geolocationexpo-locationOne-line swap in checkin handlerGoogle Maps embed linkreact-native-mapsComponent swapNext.js API routesSupabase Edge FunctionsMove Gemini/Places calls thereshadcn Slider@react-native-community/sliderProps-compatible
+
+What Makes This Competitive for Judges
+
+Genuine agentic pipeline — two specialized Gemini calls with typed contracts and an intermediate API call. The system decides, fetches, then synthesizes. That's an agent, not a chatbot.
+Hallucination-resistant by design — Gemini never generates location data. It only reasons over Places API results. This is architecturally sound and worth explaining to judges explicitly.
+Real health framing — energy as a wellness signal, overexertion prevention for anxious or first-time travellers, direct fit for the Sun Life track.
+Clean separation for scalability — the agent logic in lib/agent/ is framework-agnostic by design, making the React Native migration story concrete and credible.
+Demo-ready from the start — seed script means judges see a real populated trip, not a blank app.
