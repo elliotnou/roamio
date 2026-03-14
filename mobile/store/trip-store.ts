@@ -113,6 +113,7 @@ interface TripStore {
   setEnergyLevel: (level: number) => void;
   clearSuggestions: () => void;
   addTrip: (trip: Omit<Trip, 'id' | 'created_at'>) => Promise<Trip | null>;
+  setTripDestinationImage: (tripId: string, imageUrl: string) => Promise<void>;
   deleteTrip: (tripId: string) => Promise<boolean>;
   addActivityBlock: (block: Omit<ActivityBlock, 'id'>) => Promise<ActivityBlock | null>;
   deleteActivityBlock: (blockId: string, tripId: string) => Promise<boolean>;
@@ -233,6 +234,30 @@ export const useTripStore = create<TripStore>((set, get) => ({
       console.error('Error creating trip:', error);
     }
     return null;
+  },
+
+  setTripDestinationImage: async (tripId, imageUrl) => {
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({ destination_image: imageUrl })
+        .eq('id', tripId);
+
+      if (error) {
+        console.error('setTripDestinationImage update error:', error);
+        return;
+      }
+
+      set((state) => ({
+        trips: state.trips.map((trip) => (trip.id === tripId ? { ...trip, destination_image: imageUrl } : trip)),
+        activeTrip:
+          state.activeTrip?.id === tripId
+            ? { ...state.activeTrip, destination_image: imageUrl }
+            : state.activeTrip,
+      }));
+    } catch (error) {
+      console.error('setTripDestinationImage exception:', error);
+    }
   },
 
   deleteTrip: async (tripId: string) => {

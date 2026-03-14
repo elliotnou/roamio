@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTripStore } from '../../store/trip-store';
-import { fetchPlaceAutocomplete, PlaceAutocompleteItem } from '../../lib/places';
+import { fetchPlaceAutocomplete, fetchPlacePrimaryPhotoUrl, PlaceAutocompleteItem } from '../../lib/places';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
@@ -125,12 +125,22 @@ export default function NewTripScreen() {
     setError('');
     setLoading(true);
 
+    let destinationImage: string | null = null;
+    if (selectedPlaceId) {
+      try {
+        destinationImage = await fetchPlacePrimaryPhotoUrl(selectedPlaceId);
+      } catch {
+        destinationImage = null;
+      }
+    }
+
     const trip = await addTrip({
       user_id: user?.id || '',
       destination,
       start_date: toISODate(startDate),
       end_date: toISODate(endDate),
       travel_vibes: Array.from(selectedVibes),
+      destination_image: destinationImage ?? undefined,
     });
 
     setLoading(false);

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Image, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -5,12 +6,48 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTripStore } from '../../store/trip-store';
 import { formatDate } from '../../lib/utils';
+import { fetchPlaceAutocomplete, fetchPlacePrimaryPhotoUrl } from '../../lib/places';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
 export default function TripsScreen() {
   const router = useRouter();
-  const { trips, setActiveTrip } = useTripStore();
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const attemptedRef = useRef<Set<string>>(new Set());
+  const { trips, setActiveTrip, setTripDestinationImage } = useTripStore();
+
+  useEffect(() => {
+    const missingImageTrips = trips.filter((trip) => !trip.destination_image && !attemptedRef.current.has(trip.id));
+
+    missingImageTrips.forEach((trip) => {
+      if (inFlightRef.current.has(trip.id)) {
+        return;
+      }
+
+      attemptedRef.current.add(trip.id);
+      inFlightRef.current.add(trip.id);
+
+      (async () => {
+        try {
+          const matches = await fetchPlaceAutocomplete(trip.destination);
+          const placeId = matches[0]?.placeId;
+          if (!placeId) {
+            return;
+          }
+
+          const imageUrl = await fetchPlacePrimaryPhotoUrl(placeId);
+          if (!imageUrl) {
+            return;
+          }
+
+          await setTripDestinationImage(trip.id, imageUrl);
+        } finally {
+          inFlightRef.current.delete(trip.id);
+        }
+      })();
+    });
+  }, [trips, setTripDestinationImage]);
+
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>

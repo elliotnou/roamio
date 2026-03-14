@@ -18,6 +18,12 @@ type GoogleAutocompleteResponse = {
     }>;
 };
 
+type GooglePlaceDetailsResponse = {
+    photos?: Array<{
+        name?: string;
+    }>;
+};
+
 export async function fetchPlaceAutocomplete(query: string): Promise<PlaceAutocompleteItem[]> {
     const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
     const input = query.trim();
