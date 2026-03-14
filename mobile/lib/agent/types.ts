@@ -98,8 +98,35 @@ export interface AlternativeRankerInput {
   time_remaining_minutes: number;
   destination: string;
   candidates: NearbyPlaceCandidate[];
+  /** Trip vibes e.g. ['relaxing', 'culture'] — helps Gemini match suggestion mood */
+  travel_vibes: string[];
+  /** Minutes available between current block end and next commitment (0 = unknown) */
+  available_window_minutes: number;
+  /** Remaining activities today — so Gemini can reason about schedule fit */
+  remaining_activities: { place_name: string; start_time: string; energy_cost_estimate: number }[];
 }
 
 export interface AlternativeRankerOutput {
   suggestions: RankedSuggestion[];
+}
+
+// ─── Schedule Slot ───
+
+export interface ScheduleSlotInput {
+  activity_name: string;
+  estimated_duration_minutes: number;
+  /** HH:MM — earliest possible start (end of current block) */
+  current_block_end_time: string;
+  /** HH:MM — hard deadline before next block, or null if nothing after */
+  next_block_start_time: string | null;
+  energy_level: number;
+  day_activities: { place_name: string; start_time: string; end_time: string }[];
+}
+
+export interface ScheduleSlotOutput {
+  /** HH:MM */
+  start_time: string;
+  /** HH:MM */
+  end_time: string;
+  reasoning: string;
 }

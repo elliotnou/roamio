@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { View, Text, Pressable, Image, Animated, PanResponder, Dimensions, Linking, StyleSheet } from 'react-native';
+import { View, Text, Pressable, Image, Animated, PanResponder, Dimensions, Linking, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -14,31 +14,28 @@ const SWIPE_THRESHOLD = 80;
 
 function getEnergyBadgeColor(label: 'very low' | 'low' | 'moderate'): string {
   switch (label) {
-    case 'very low':
-      return C.sage;
-    case 'low':
-      return C.sageLight;
-    case 'moderate':
-      return '#b8a06a';
+    case 'very low': return C.sage;
+    case 'low': return C.sageLight;
+    case 'moderate': return '#b8a06a';
   }
 }
 
 export default function SuggestionsScreen() {
   const router = useRouter();
-  const { suggestions, updateSuggestionOutcome } = useTripStore();
+  const {
+    suggestions,
+    updateSuggestionOutcome,
+    addActivityBlock,
+    activeTrip,
+    activityBlocks,
+    checkIns,
+    latestCheckInId,
+    trips,
+  } = useTripStore();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [chosenId, setChosenId] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
 
   const pan = useRef(new Animated.ValueXY()).current;
-
-  // Placement animation values
-  const placeScale = useRef(new Animated.Value(1)).current;
-  const placeOpacity = useRef(new Animated.Value(1)).current;
-  const placeY = useRef(new Animated.Value(0)).current;
-  const checkScale = useRef(new Animated.Value(0)).current;
-  const checkOpacity = useRef(new Animated.Value(0)).current;
-  const toastOpacity = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -59,8 +56,86 @@ export default function SuggestionsScreen() {
 
   const handleChoose = async (placeId: string, placeName: string) => {
     if (placing) return;
-    setChosenId(placeId);
     setPlacing(true);
+
+    // Find source check-in's activity block by searching all trips
+    const sourceCheckIn = checkIns.find((c) => c.id === latestCheckInId);
+    let tripId: string | null = null;
+    let sourceBlock: (typeof activityBlocks)[string][number] | null = null;
+    if (sourceCheckIn) {
+      for (const [tid, blocks] of Object.entries(activityBlocks)) {
+        const found = blocks.find((b) => b.id === sourceCheckIn.activity_block_id);
+        if (found) { tripId = tid; sourceBlock = found; break; }
+      }
+    }
+    if (!tripId) tripId = activeTrip?.id ?? null;
+
+    if (!tripId) {
+      Alert.alert('Add failed', 'Could not determine trip');
+      setPlacing(false);
+      return;
+    }
+
+    // Find the next block after the source — the alternative replaces that slot
+    const allBlocks = activityBlocks[tripId] ?? [];
+    const nextBlock = sourceBlock
+      ? allBlocks
+          .filter((b) => b.start_time > sourceBlock!.end_time)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time))[0] ?? null
+      : null;
+
+    // Build full ISO timestamps — DB stores timestamptz, not plain HH:MM
+    const trip = trips.find((t) => t.id === tripId);
+    const dayIndex = sourceBlock?.day_index ?? 0;
+    const baseDate = trip?.start_date ? new Date(trip.start_date) : new Date();
+    baseDate.setDate(baseDate.getDate() + dayIndex);
+    const dateStr = baseDate.toISOString().split('T')[0]; // "YYYY-MM-DD"
+
+    let startISO: string;
+    let endISO: string;
+    if (nextBlock) {
+      // Slot in place of next scheduled event
+      startISO = nextBlock.start_time.includes('T')
+        ? nextBlock.start_time
+        : `${dateStr}T${nextBlock.start_time.slice(0, 5)}:00`;
+      endISO = nextBlock.end_time.includes('T')
+        ? nextBlock.end_time
+        : `${dateStr}T${nextBlock.end_time.slice(0, 5)}:00`;
+    } else {
+      // No next event — schedule 30 min after source block ends
+      const endHHMM = sourceBlock ? sourceBlock.end_time.slice(0, 5) : '14:00';
+      const [eh, em] = endHHMM.split(':').map(Number);
+      const startMin = (eh ?? 14) * 60 + (em ?? 0) + 30;
+      const endMin = startMin + 60;
+      const pad = (n: number) => String(Math.floor(n) % 24).padStart(2, '0');
+      startISO = `${dateStr}T${pad(startMin / 60)}:${String(startMin % 60).padStart(2, '0')}:00`;
+      endISO = `${dateStr}T${pad(endMin / 60)}:${String(endMin % 60).padStart(2, '0')}:00`;
+    }
+
+    // Check for overlap with existing blocks on that day
+    const parseHHMM = (s: string): number => {
+      const clean = s.slice(0, 5);
+      const [h, m] = clean.split(':').map(Number);
+      return (h ?? 0) * 60 + (m ?? 0);
+    };
+    const newStart = parseHHMM(startISO.includes('T') ? startISO.split('T')[1] : startISO);
+    const newEnd = parseHHMM(endISO.includes('T') ? endISO.split('T')[1] : endISO);
+    const sameDay = allBlocks.filter((b) => b.day_index === dayIndex);
+    const conflicting = sameDay.find((b) => {
+      const bs = parseHHMM(b.start_time.includes('T') ? b.start_time.split('T')[1] : b.start_time);
+      const be = parseHHMM(b.end_time.includes('T') ? b.end_time.split('T')[1] : b.end_time);
+      return newStart < be && newEnd > bs;
+    });
+    if (conflicting) {
+      // Push start to after the conflicting block
+      const be = parseHHMM(conflicting.end_time.includes('T') ? conflicting.end_time.split('T')[1] : conflicting.end_time);
+      const adjustedStart = be + 15;
+      const adjustedEnd = adjustedStart + 60;
+      const pad = (n: number) => String(Math.floor(n / 60) % 24).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0');
+      const datePrefix = startISO.includes('T') ? startISO.split('T')[0] : startISO.slice(0, 10);
+      startISO = `${datePrefix}T${pad(adjustedStart)}:00`;
+      endISO = `${datePrefix}T${pad(adjustedEnd)}:00`;
+    }
 
     await updateSuggestionOutcome({
       agent_outcome: 'rerouted',
@@ -68,58 +143,38 @@ export default function SuggestionsScreen() {
       selected_place_name: placeName,
     });
 
-    // Step 1: Card pulses up slightly
-    Animated.sequence([
-      Animated.spring(placeScale, { toValue: 1.04, useNativeDriver: true, speed: 20 }),
-      // Step 2: Card shrinks and flies up (placed into schedule)
-      Animated.parallel([
-        Animated.timing(placeScale, { toValue: 0.7, duration: 350, useNativeDriver: true }),
-        Animated.timing(placeOpacity, { toValue: 0, duration: 350, useNativeDriver: true }),
-        Animated.timing(placeY, { toValue: -120, duration: 350, useNativeDriver: true }),
-      ]),
-    ]).start();
+    try {
+      const result = await addActivityBlock({
+        trip_id: tripId,
+        day_index: dayIndex,
+        place_name: placeName,
+        resolved_place_id: placeId,
+        resolved_place_name: placeName,
+        resolved_lat: null,
+        resolved_lng: null,
+        start_time: startISO,
+        end_time: endISO,
+        activity_type: 'other',
+        energy_cost_estimate: sourceCheckIn?.energy_level ?? 5,
+      });
+      if (!result) {
+        Alert.alert('Add failed', 'Insert returned null');
+        setPlacing(false);
+        return;
+      }
+    } catch (err: any) {
+      Alert.alert('Add failed', String(err?.message ?? err));
+      setPlacing(false);
+      return;
+    }
 
-    // Step 3: Show checkmark burst
-    setTimeout(() => {
-      Animated.parallel([
-        Animated.spring(checkScale, { toValue: 1, useNativeDriver: true, speed: 10 }),
-        Animated.timing(checkOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-    }, 200);
-
-    // Step 4: Fade in toast
-    setTimeout(() => {
-      Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    }, 300);
-
-    // Navigate after animation completes
-    setTimeout(() => router.replace('/(tabs)'), 1600);
+    router.replace('/(tabs)');
   };
 
   const current = suggestions[currentIndex];
 
   return (
     <SafeAreaView style={s.safe}>
-
-      {/* Toast */}
-      <Animated.View style={[s.toast, { opacity: toastOpacity }]}>
-        <Feather name="check-circle" size={18} color={C.white} />
-        <Text style={s.toastText}>Added to your plan</Text>
-      </Animated.View>
-
-      {/* Placement checkmark burst */}
-      <Animated.View style={[
-        s.checkBurst,
-        { opacity: checkOpacity, transform: [{ scale: checkScale }] }
-      ]}>
-        <View style={s.checkCircleOuter}>
-          <View style={s.checkCircleInner}>
-            <Feather name="check" size={32} color={C.white} />
-          </View>
-        </View>
-        <Text style={s.checkBurstText}>Placed in your itinerary</Text>
-      </Animated.View>
-
       <View style={s.container}>
         <View style={s.header}>
           <Pressable onPress={() => router.back()} style={s.backBtn}>
@@ -138,20 +193,11 @@ export default function SuggestionsScreen() {
             </View>
             <Text style={s.emptyTitle}>No nearby alternatives yet</Text>
             <Text style={s.emptyText}>
-              No nearby places were found. Check your location permissions and Google Maps API key, then try again.
+              No nearby places were found. Check your location permissions and try again.
             </Text>
           </View>
         ) : (
-          <Animated.View
-            style={[
-              s.cardStack,
-              placing && {
-                transform: [{ scale: placeScale }, { translateY: placeY }],
-                opacity: placeOpacity,
-              }
-            ]}
-            {...panResponder.panHandlers}
-          >
+          <Animated.View style={s.cardStack} {...panResponder.panHandlers}>
             {suggestions.map((suggestion, idx) => {
               const offset = ((idx - currentIndex) + suggestions.length) % suggestions.length;
               if (offset > 2) return null;
@@ -174,9 +220,7 @@ export default function SuggestionsScreen() {
                       },
                     ],
                   }
-                : {
-                    transform: [{ scale }, { translateY }],
-                  };
+                : { transform: [{ scale }, { translateY }] };
 
               return (
                 <Animated.View
@@ -220,7 +264,7 @@ export default function SuggestionsScreen() {
           </Animated.View>
         )}
 
-        {suggestions.length > 0 ? (
+        {suggestions.length > 1 ? (
           <View style={s.navRow}>
             <Pressable style={s.navBtn} onPress={goPrev} disabled={placing}>
               <Feather name="chevron-left" size={20} color={C.fg} />
@@ -239,17 +283,17 @@ export default function SuggestionsScreen() {
         ) : null}
 
         <Pressable
-          style={[s.chooseBtn, (!!chosenId && chosenId !== current?.place_id) && s.chooseBtnDisabled]}
+          style={[s.chooseBtn, placing && s.chooseBtnDisabled]}
           onPress={() => current && handleChoose(current.place_id, current.place_name)}
-          disabled={!!chosenId}
+          disabled={placing}
         >
-          <Feather
-            name={chosenId === current?.place_id ? 'check' : 'plus-circle'}
-            size={18}
-            color={C.white}
-          />
+          {placing ? (
+            <ActivityIndicator size="small" color={C.white} />
+          ) : (
+            <Feather name="plus-circle" size={18} color={C.white} />
+          )}
           <Text style={s.chooseBtnText}>
-            {chosenId === current?.place_id ? 'Added to plan!' : 'Add to my plan'}
+            {placing ? 'Adding…' : 'Add to my plan'}
           </Text>
         </Pressable>
 
@@ -270,30 +314,6 @@ export default function SuggestionsScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-
-  toast: {
-    position: 'absolute', top: 60, alignSelf: 'center', zIndex: 200,
-    backgroundColor: C.eHighText, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 999,
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
-  },
-  toastText: { color: C.white, fontFamily: F.semiBold, fontSize: 14 },
-
-  checkBurst: {
-    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-    justifyContent: 'center', alignItems: 'center', zIndex: 100,
-    pointerEvents: 'none',
-  } as any,
-  checkCircleOuter: {
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: C.sage + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 20,
-  },
-  checkCircleInner: {
-    width: 84, height: 84, borderRadius: 42,
-    backgroundColor: C.sage, justifyContent: 'center', alignItems: 'center',
-  },
-  checkBurstText: { fontSize: 16, fontFamily: F.semiBold, color: C.fg, textAlign: 'center' },
-
   container: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.white, justifyContent: 'center', alignItems: 'center' },
@@ -302,22 +322,12 @@ const s = StyleSheet.create({
 
   cardStack: { height: 420, marginBottom: 16 },
   emptyState: {
-    height: 320,
-    backgroundColor: C.white,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    marginBottom: 16,
+    height: 320, backgroundColor: C.white, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, marginBottom: 16,
   },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: C.cardBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    width: 64, height: 64, borderRadius: 32, backgroundColor: C.cardBg,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
   },
   emptyTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg, marginBottom: 8, textAlign: 'center' },
   emptyText: { fontSize: 14, fontFamily: F.regular, color: C.secondary, textAlign: 'center', lineHeight: 20 },
@@ -325,7 +335,6 @@ const s = StyleSheet.create({
   cardImage: { width: '100%', height: '100%' },
   energyBadge: { position: 'absolute', top: 16, left: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   energyBadgeText: { color: C.white, fontSize: 12, fontFamily: F.semiBold },
-
   cardBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24 },
   cardTitle: { color: C.white, fontSize: 20, fontFamily: F.bold, marginBottom: 8 },
   cardDesc: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontFamily: F.regular, lineHeight: 20, marginBottom: 12 },
@@ -346,7 +355,6 @@ const s = StyleSheet.create({
   },
   chooseBtnDisabled: { backgroundColor: C.border },
   chooseBtnText: { color: C.white, fontSize: 15, fontFamily: F.semiBold },
-
   skipBtn: { alignItems: 'center', paddingVertical: 8 },
   skipText: { color: C.secondary, fontSize: 14, fontFamily: F.medium },
 });
