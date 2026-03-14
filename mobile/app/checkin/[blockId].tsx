@@ -38,6 +38,7 @@ export default function CheckInScreen() {
 
   const [energyLevel, setEnergyLevel] = useState(5);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [sliderX] = useState(new Animated.Value((5 / 10) * SLIDER_W));
   const energyRef = useRef(5);
 
@@ -66,8 +67,11 @@ export default function CheckInScreen() {
   })).current;
 
   const handleSubmit = async () => {
+    setSubmitError('');
+
+    let saved = false;
     if (block) {
-      await submitCheckIn({
+      saved = await submitCheckIn({
         activity_block_id: block.id,
         user_id: user?.id || '',
         energy_level: energyLevel,
@@ -77,6 +81,14 @@ export default function CheckInScreen() {
         selected_place_id: null,
         selected_place_name: null,
       });
+    } else {
+      setSubmitError('Could not find this activity block. Please refresh and try again.');
+      return;
+    }
+
+    if (!saved) {
+      setSubmitError('We could not save your check-in. Please try again.');
+      return;
     }
 
     if (energyLevel <= 4) {
@@ -140,6 +152,8 @@ export default function CheckInScreen() {
               </Text>
             </Pressable>
 
+            {submitError ? <Text style={s.submitError}>{submitError}</Text> : null}
+
             <Pressable onPress={() => router.back()} style={s.cancelBtn}>
               <Text style={s.cancelText}>Not now</Text>
             </Pressable>
@@ -190,6 +204,7 @@ const s = StyleSheet.create({
 
   cancelBtn: { marginTop: 16 },
   cancelText: { fontSize: 14, fontFamily: F.medium, color: C.placeholder },
+  submitError: { marginTop: 12, color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center' },
 
   successWrap: { alignItems: 'center' },
   successIcon: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },

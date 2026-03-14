@@ -38,6 +38,24 @@ function formatTime(date: Date): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
+function toActivityTimestamp(tripStartDate: string, dayIndex: number, time: Date): string {
+  const base = new Date(`${tripStartDate}T00:00:00`);
+  base.setDate(base.getDate() + dayIndex);
+  base.setHours(time.getHours(), time.getMinutes(), 0, 0);
+  return base.toISOString();
+}
+
+function formatExistingBlockTime(value: string): string {
+  if (!value.includes('T')) {
+    return value;
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return value;
+  }
+  return formatTime(d);
+}
+
 function formatTimeDisplay(date: Date): string {
   const h = date.getHours();
   const m = date.getMinutes();
@@ -91,8 +109,8 @@ export default function ItineraryScreen() {
       resolved_lng: null,
       activity_type: activityType,
       energy_cost_estimate: energyLevel,
-      start_time: formatTime(startTime),
-      end_time: formatTime(endTime),
+      start_time: toActivityTimestamp(trip?.start_date || new Date().toISOString().split('T')[0], dayIndex, startTime),
+      end_time: toActivityTimestamp(trip?.start_date || new Date().toISOString().split('T')[0], dayIndex, endTime),
     });
 
     setLoading(false);
@@ -149,7 +167,7 @@ export default function ItineraryScreen() {
             <View style={s.existingSection}>
               {dayBlocks.sort((a, b) => a.start_time.localeCompare(b.start_time)).map((block, i) => (
                 <View key={block.id} style={s.existingBlock}>
-                  <Text style={s.existingTime}>{block.start_time}</Text>
+                  <Text style={s.existingTime}>{formatExistingBlockTime(block.start_time)}</Text>
                   <View style={s.existingDot} />
                   <Text style={s.existingName}>{block.place_name}</Text>
                 </View>

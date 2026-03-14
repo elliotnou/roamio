@@ -22,7 +22,20 @@ interface TripStore {
   setEnergyLevel: (level: number) => void;
   addTrip: (trip: Omit<Trip, 'id' | 'created_at'>) => Promise<Trip | null>;
   addActivityBlock: (block: Omit<ActivityBlock, 'id' | 'created_at'>) => Promise<ActivityBlock | null>;
-  submitCheckIn: (checkIn: Omit<CheckIn, 'id' | 'timestamp'>) => Promise<void>;
+  submitCheckIn: (checkIn: Omit<CheckIn, 'id' | 'timestamp'>) => Promise<boolean>;
+}
+
+async function ensureUserProfile(sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) {
+  const payload = {
+    id: sessionUser.id,
+    email: sessionUser.email || '',
+    display_name: sessionUser.user_metadata?.display_name || null,
+  };
+
+  const { error } = await supabase.from('users').upsert(payload, { onConflict: 'id' });
+  if (error) {
+    throw new Error(`Failed to ensure user profile: ${error.message}`);
+  }
 }
 
 export const useTripStore = create<TripStore>((set, get) => ({
@@ -44,23 +57,34 @@ export const useTripStore = create<TripStore>((set, get) => ({
       if (!session) { set({ isLoading: false }); return; }
 
       const userId = session.user.id;
+      await ensureUserProfile(session.user);
+
       set({ user: { id: userId, email: session.user.email || '', display_name: session.user.user_metadata?.display_name || '', created_at: new Date().toISOString() } });
 
-      const { data: trips } = await supabase.from('trips').select('*').eq('user_id', userId).order('start_date', { ascending: true });
-      if (!trips) return;
+      const { data: trips, error: tripsError } = await supabase.from('trips').select('*').eq('user_id', userId).order('start_date', { ascending: true });
+      if (tripsError) {
+        throw new Error(`Failed to fetch trips: ${tripsError.message}`);
+      }
+      const safeTrips = trips || [];
       
-      const tripIds = trips.map(t => t.id);
+      const tripIds = safeTrips.map(t => t.id);
       
       let blocks: any[] = [];
       if (tripIds.length > 0) {
-        const { data } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
+        const { data, error: blocksError } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
+        if (blocksError) {
+          throw new Error(`Failed to fetch activity blocks: ${blocksError.message}`);
+        }
         if (data) blocks = data;
       }
 
-      const { data: checkIns } = await supabase.from('check_ins').select('*').eq('user_id', userId);
+      const { data: checkIns, error: checkInsError } = await supabase.from('check_ins').select('*').eq('user_id', userId);
+      if (checkInsError) {
+        throw new Error(`Failed to fetch check-ins: ${checkInsError.message}`);
+      }
 
       const blocksMap: Record<string, ActivityBlock[]> = {};
-      trips.forEach(t => { blocksMap[t.id] = [] });
+      safeTrips.forEach(t => { blocksMap[t.id] = [] });
       
       blocks.forEach(b => {
         if (!blocksMap[b.trip_id]) blocksMap[b.trip_id] = [];
@@ -68,8 +92,8 @@ export const useTripStore = create<TripStore>((set, get) => ({
       });
 
       set({
-        trips,
-        activeTrip: trips.length > 0 ? trips[0] : null,
+        trips: safeTrips,
+        activeTrip: safeTrips.length > 0 ? safeTrips[0] : null,
         activityBlocks: blocksMap,
         checkIns: checkIns || [],
       });
@@ -88,7 +112,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
     let userId = get().user?.id;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) userId = session.user.id;
+      if (session) {
+        userId = session.user.id;
+        await ensureUserProfile(session.user);
+      }
     } catch {}
     if (!userId) return null;
     
@@ -103,15 +130,13 @@ export const useTripStore = create<TripStore>((set, get) => ({
         }));
         return data;
       }
-    } catch {}
-    // Fallback: create locally if Supabase fails (dev mode)
-    const localTrip = { ...dbTrip, id: 'local-' + Date.now(), created_at: new Date().toISOString() } as any;
-    set((state) => ({
-      trips: [...state.trips, localTrip],
-      activityBlocks: { ...state.activityBlocks, [localTrip.id]: [] },
-      activeTrip: state.activeTrip || localTrip,
-    }));
-    return localTrip;
+      if (error) {
+        console.error('Supabase insert error for trips:', error);
+      }
+    } catch (e) {
+      console.error('Supabase insert exception for trips:', e);
+    }
+    return null;
   },
 
   addActivityBlock: async (block) => {
@@ -134,27 +159,19 @@ export const useTripStore = create<TripStore>((set, get) => ({
     } catch (e) {
       console.error("Supabase insert exception for activity_blocks:", e);
     }
-    // Fallback: create locally
-    const localBlock = { ...block, id: 'local-' + Date.now(), created_at: new Date().toISOString() } as any;
-    set((state) => {
-      const existing = state.activityBlocks[block.trip_id] || [];
-      return {
-        activityBlocks: {
-          ...state.activityBlocks,
-          [block.trip_id]: [...existing, localBlock],
-        },
-      };
-    });
-    return localBlock;
+    return null;
   },
 
   submitCheckIn: async (checkIn) => {
     let userId = get().user?.id;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) userId = session.user.id;
+      if (session) {
+        userId = session.user.id;
+        await ensureUserProfile(session.user);
+      }
     } catch {}
-    if (!userId) return;
+    if (!userId) return false;
     
     const dbCheckIn = { 
       activity_block_id: checkIn.activity_block_id,
@@ -174,18 +191,13 @@ export const useTripStore = create<TripStore>((set, get) => ({
           checkIns: [...state.checkIns, data],
           energyLevel: null,
         }));
-        return;
+        return true;
       } else {
         console.error("Supabase insert error for check_ins:", error);
       }
     } catch (err) {
       console.error("Supabase insert exception for check_ins:", err);
     }
-    // Fallback: store locally
-    const localCheckIn = { ...dbCheckIn, id: 'local-' + Date.now(), timestamp: new Date().toISOString() } as any;
-    set((state) => ({
-      checkIns: [...state.checkIns, localCheckIn],
-      energyLevel: null,
-    }));
+    return false;
   },
 }));
