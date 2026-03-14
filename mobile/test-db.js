@@ -56,7 +56,7 @@ async function runTest() {
     energy_level: 5,
     current_lat: 0.0,
     current_lng: 0.0,
-    agent_outcome: 'accept'
+    agent_outcome: 'affirmed'
   }]).select().single();
 
   if (checkInError) {
