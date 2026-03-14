@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Modal, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Modal, StyleSheet, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -27,7 +27,10 @@ function toISODate(date: Date): string {
 export default function NewTripScreen() {
   const router = useRouter();
   const { addTrip, user } = useTripStore();
+  const destinationInputRef = useRef<TextInput>(null);
+  const autocompleteRequestRef = useRef(0);
   const [destination, setDestination] = useState('');
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedVibes, setSelectedVibes] = useState<Set<string>>(new Set());
@@ -37,6 +40,52 @@ export default function NewTripScreen() {
   
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteItem[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  const handleDestinationChange = (text: string) => {
+    setDestination(text);
+    setSelectedPlaceId(null);
+
+    const input = text.trim();
+    if (input.length <= 2) {
+      autocompleteRequestRef.current += 1;
+      setSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
+
+    const requestId = autocompleteRequestRef.current + 1;
+    autocompleteRequestRef.current = requestId;
+    setLoadingSuggestions(true);
+
+    fetchPlaceAutocomplete(input)
+      .then((results) => {
+        if (autocompleteRequestRef.current !== requestId) {
+          return;
+        }
+        setSuggestions(results);
+      })
+      .catch(() => {
+        if (autocompleteRequestRef.current !== requestId) {
+          return;
+        }
+        setSuggestions([]);
+      })
+      .finally(() => {
+        if (autocompleteRequestRef.current === requestId) {
+          setLoadingSuggestions(false);
+        }
+      });
+  };
+
+  const handleSelectSuggestion = (item: PlaceAutocompleteItem) => {
+    autocompleteRequestRef.current += 1;
+    setDestination(item.fullText);
+    setSelectedPlaceId(item.placeId);
+    setSuggestions([]);
+    setLoadingSuggestions(false);
+    Keyboard.dismiss();
+    destinationInputRef.current?.blur();
+  };
 
   const toggleVibe = (key: string) => {
     setSelectedVibes((prev) => {
@@ -79,7 +128,7 @@ export default function NewTripScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="always">
           <View style={s.header}>
             <Pressable onPress={() => router.replace('/(tabs)')} style={s.backBtn}>
               <Feather name="arrow-left" size={18} color={C.fg} />
@@ -94,20 +143,15 @@ export default function NewTripScreen() {
               <View style={s.inputRow}>
                 <Feather name="map-pin" size={16} color={C.sage} />
                 <TextInput
+                  ref={destinationInputRef}
                   style={s.input}
                   placeholder="e.g. Tokyo, Japan"
                   placeholderTextColor={C.placeholder}
                   value={destination}
-                  onChangeText={(text) => {
-                    setDestination(text);
-                    if (text.length > 2) {
-                      setLoadingSuggestions(true);
-                      fetchPlaceAutocomplete(text).then((results) => {
-                        setSuggestions(results);
-                        setLoadingSuggestions(false);
-                      });
-                    } else {
-                      setSuggestions([]);
+                  onChangeText={handleDestinationChange}
+                  onFocus={() => {
+                    if (!selectedPlaceId && destination.trim().length > 2) {
+                      handleDestinationChange(destination);
                     }
                   }}
                 />
@@ -119,10 +163,7 @@ export default function NewTripScreen() {
                     <Pressable
                       key={item.placeId}
                       style={s.suggestionItem}
-                      onPress={() => {
-                        setDestination(item.primaryText);
-                        setSuggestions([]);
-                      }}
+                      onPress={() => handleSelectSuggestion(item)}
                     >
                       <Feather name="map-pin" size={14} color={C.placeholder} />
                       <View style={{ flex: 1 }}>
