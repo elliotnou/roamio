@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-git --eslint --import-alias \"@/*\" --yes)"
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-git --eslint --import-alias \"@/*\" --yes)",
+      "Bash(git stash:*)"
     ]
   }
 }

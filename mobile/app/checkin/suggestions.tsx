@@ -25,9 +25,17 @@ export default function SuggestionsScreen() {
   const { suggestions } = useTripStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chosenId, setChosenId] = useState<string | null>(null);
-  const [showToast, setShowToast] = useState(false);
+  const [placing, setPlacing] = useState(false);
 
   const pan = useRef(new Animated.ValueXY()).current;
+
+  // Placement animation values
+  const placeScale = useRef(new Animated.Value(1)).current;
+  const placeOpacity = useRef(new Animated.Value(1)).current;
+  const placeY = useRef(new Animated.Value(0)).current;
+  const checkScale = useRef(new Animated.Value(0)).current;
+  const checkOpacity = useRef(new Animated.Value(0)).current;
+  const toastOpacity = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -45,21 +53,61 @@ export default function SuggestionsScreen() {
   const goPrev = () => setCurrentIndex((p) => (p - 1 + suggestions.length) % suggestions.length);
 
   const handleChoose = (placeId: string) => {
+    if (placing) return;
     setChosenId(placeId);
-    setShowToast(true);
-    setTimeout(() => router.replace('/(tabs)'), 1800);
+    setPlacing(true);
+
+    // Step 1: Card pulses up slightly
+    Animated.sequence([
+      Animated.spring(placeScale, { toValue: 1.04, useNativeDriver: true, speed: 20 }),
+      // Step 2: Card shrinks and flies up (placed into schedule)
+      Animated.parallel([
+        Animated.timing(placeScale, { toValue: 0.7, duration: 350, useNativeDriver: true }),
+        Animated.timing(placeOpacity, { toValue: 0, duration: 350, useNativeDriver: true }),
+        Animated.timing(placeY, { toValue: -120, duration: 350, useNativeDriver: true }),
+      ]),
+    ]).start();
+
+    // Step 3: Show checkmark burst
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.spring(checkScale, { toValue: 1, useNativeDriver: true, speed: 10 }),
+        Animated.timing(checkOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    }, 200);
+
+    // Step 4: Fade in toast
+    setTimeout(() => {
+      Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }, 300);
+
+    // Navigate after animation completes
+    setTimeout(() => router.replace('/(tabs)'), 1600);
   };
 
   const current = suggestions[currentIndex];
 
   return (
     <SafeAreaView style={s.safe}>
-      {showToast && (
-        <View style={s.toast}>
-          <Feather name="check-circle" size={18} color={C.white} />
-          <Text style={s.toastText}>Plan updated</Text>
+
+      {/* Toast */}
+      <Animated.View style={[s.toast, { opacity: toastOpacity }]}>
+        <Feather name="check-circle" size={18} color={C.white} />
+        <Text style={s.toastText}>Added to your plan</Text>
+      </Animated.View>
+
+      {/* Placement checkmark burst */}
+      <Animated.View style={[
+        s.checkBurst,
+        { opacity: checkOpacity, transform: [{ scale: checkScale }] }
+      ]}>
+        <View style={s.checkCircleOuter}>
+          <View style={s.checkCircleInner}>
+            <Feather name="check" size={32} color={C.white} />
+          </View>
         </View>
-      )}
+        <Text style={s.checkBurstText}>Placed in your itinerary</Text>
+      </Animated.View>
 
       <View style={s.container}>
         <View style={s.header}>
@@ -67,12 +115,21 @@ export default function SuggestionsScreen() {
             <Feather name="chevron-left" size={18} color={C.fg} />
           </Pressable>
           <View>
-            <Text style={s.headerTitle}>Gentler alternatives</Text>
-            <Text style={s.headerSub}>Swipe to browse</Text>
+            <Text style={s.headerTitle}>Alternative activities</Text>
+            <Text style={s.headerSub}>Swipe to browse options</Text>
           </View>
         </View>
 
-        <View style={s.cardStack} {...panResponder.panHandlers}>
+        <Animated.View
+          style={[
+            s.cardStack,
+            placing && {
+              transform: [{ scale: placeScale }, { translateY: placeY }],
+              opacity: placeOpacity,
+            }
+          ]}
+          {...panResponder.panHandlers}
+        >
           {suggestions.map((suggestion, idx) => {
             const offset = ((idx - currentIndex) + suggestions.length) % suggestions.length;
             if (offset > 2) return null;
@@ -131,35 +188,40 @@ export default function SuggestionsScreen() {
               </Animated.View>
             );
           })}
-        </View>
+        </Animated.View>
 
         <View style={s.navRow}>
-          <Pressable style={s.navBtn} onPress={goPrev}>
+          <Pressable style={s.navBtn} onPress={goPrev} disabled={placing}>
             <Feather name="chevron-left" size={20} color={C.fg} />
           </Pressable>
           <View style={s.dots}>
             {suggestions.map((_, idx) => (
-              <Pressable key={idx} onPress={() => setCurrentIndex(idx)}>
+              <Pressable key={idx} onPress={() => !placing && setCurrentIndex(idx)}>
                 <View style={[s.dot, idx === currentIndex && s.dotActive]} />
               </Pressable>
             ))}
           </View>
-          <Pressable style={s.navBtn} onPress={goNext}>
+          <Pressable style={s.navBtn} onPress={goNext} disabled={placing}>
             <Feather name="chevron-right" size={20} color={C.fg} />
           </Pressable>
         </View>
 
         <Pressable
-          style={[s.chooseBtn, chosenId && chosenId !== current.place_id && s.chooseBtnDisabled]}
-          onPress={() => handleChoose(current.place_id)}
+          style={[s.chooseBtn, (!!chosenId && chosenId !== current?.place_id) && s.chooseBtnDisabled]}
+          onPress={() => current && handleChoose(current.place_id)}
           disabled={!!chosenId}
         >
+          <Feather
+            name={chosenId === current?.place_id ? 'check' : 'plus-circle'}
+            size={18}
+            color={C.white}
+          />
           <Text style={s.chooseBtnText}>
-            {chosenId === current.place_id ? 'Chosen' : 'Choose this'}
+            {chosenId === current?.place_id ? 'Added to plan!' : 'Add to my plan'}
           </Text>
         </Pressable>
 
-        <Pressable onPress={() => router.replace('/(tabs)')} style={s.skipBtn}>
+        <Pressable onPress={() => router.replace('/(tabs)')} style={s.skipBtn} disabled={placing}>
           <Text style={s.skipText}>Skip — keep my current plan</Text>
         </Pressable>
       </View>
@@ -169,14 +231,31 @@ export default function SuggestionsScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
+
   toast: {
-    position: 'absolute', top: 60, left: '50%', marginLeft: -80, zIndex: 100,
-    backgroundColor: C.eHighText, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 999,
+    position: 'absolute', top: 60, alignSelf: 'center', zIndex: 200,
+    backgroundColor: C.eHighText, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 999,
     flexDirection: 'row', alignItems: 'center', gap: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
   },
   toastText: { color: C.white, fontFamily: F.semiBold, fontSize: 14 },
-  container: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
 
+  checkBurst: {
+    position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+    justifyContent: 'center', alignItems: 'center', zIndex: 100,
+    pointerEvents: 'none',
+  } as any,
+  checkCircleOuter: {
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: C.sage + '20', justifyContent: 'center', alignItems: 'center', marginBottom: 20,
+  },
+  checkCircleInner: {
+    width: 84, height: 84, borderRadius: 42,
+    backgroundColor: C.sage, justifyContent: 'center', alignItems: 'center',
+  },
+  checkBurstText: { fontSize: 16, fontFamily: F.semiBold, color: C.fg, textAlign: 'center' },
+
+  container: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.white, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg },
@@ -185,10 +264,6 @@ const s = StyleSheet.create({
   cardStack: { height: 420, marginBottom: 16 },
   card: { position: 'absolute', width: CARD_W, height: 400, borderRadius: 24, overflow: 'hidden' },
   cardImage: { width: '100%', height: '100%' },
-  cardHeart: {
-    position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center',
-  },
   energyBadge: { position: 'absolute', top: 16, left: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   energyBadgeText: { color: C.white, fontSize: 12, fontFamily: F.semiBold },
 
@@ -205,9 +280,14 @@ const s = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
   dotActive: { width: 24, backgroundColor: C.charcoal },
 
-  chooseBtn: { backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 14, alignItems: 'center', marginBottom: 12 },
+  chooseBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 15, marginBottom: 12,
+    shadowColor: C.charcoal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
+  },
   chooseBtnDisabled: { backgroundColor: C.border },
-  chooseBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
+  chooseBtnText: { color: C.white, fontSize: 15, fontFamily: F.semiBold },
+
   skipBtn: { alignItems: 'center', paddingVertical: 8 },
   skipText: { color: C.secondary, fontSize: 14, fontFamily: F.medium },
 });

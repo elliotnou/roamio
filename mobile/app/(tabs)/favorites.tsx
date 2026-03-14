@@ -85,7 +85,7 @@ const ch = StyleSheet.create({
 });
 
 export default function InsightsScreen() {
-  const { trips, checkIns, activityBlocks } = useTripStore();
+  const { trips, activeTrip, checkIns, activityBlocks } = useTripStore();
 
   const totalActivities = Object.values(activityBlocks).flat().length;
   const totalCheckIns = checkIns.length;
@@ -97,13 +97,21 @@ export default function InsightsScreen() {
   const reroutedCount = checkIns.filter(c => c.agent_outcome === 'rerouted').length;
 
   // Build chart data from check-ins ordered by timestamp
+  // We only want to chart the active trip's check-ins, or if none, an empty array.
+  const activeTripBlocks = activeTrip ? (activityBlocks[activeTrip.id] || []) : [];
+  const activeBlockIds = new Set(activeTripBlocks.map(b => b.id));
+  
   const chartData = checkIns
+    .filter(c => activeBlockIds.has(c.activity_block_id))
     .slice()
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    .map((c, i) => {
-      const block = Object.values(activityBlocks).flat().find(b => b.id === c.activity_block_id);
+    .map((c) => {
+      const d = new Date(c.timestamp);
+      const h = d.getHours();
+      const formatH = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+      const ampm = h >= 12 ? 'p' : 'a';
       return {
-        label: block ? block.place_name.split(' ')[0].slice(0, 5) : `#${i + 1}`,
+        label: `${formatH}${ampm}`,
         value: c.energy_level,
       };
     });

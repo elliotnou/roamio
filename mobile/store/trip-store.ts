@@ -21,7 +21,10 @@ interface TripStore {
   setActiveTrip: (trip: Trip | null) => void;
   setEnergyLevel: (level: number) => void;
   addTrip: (trip: Omit<Trip, 'id' | 'created_at'>) => Promise<Trip | null>;
+  deleteTrip: (tripId: string) => Promise<boolean>;
   addActivityBlock: (block: Omit<ActivityBlock, 'id' | 'created_at'>) => Promise<ActivityBlock | null>;
+  deleteActivityBlock: (blockId: string, tripId: string) => Promise<boolean>;
+  updateActivityBlock: (blockId: string, updates: Partial<Pick<ActivityBlock, 'place_name' | 'start_time' | 'end_time' | 'activity_type' | 'energy_cost_estimate'>>) => Promise<ActivityBlock | null>;
   submitCheckIn: (checkIn: Omit<CheckIn, 'id' | 'timestamp'>) => Promise<boolean>;
 }
 
@@ -159,6 +162,83 @@ export const useTripStore = create<TripStore>((set, get) => ({
       console.error('Supabase insert exception for trips:', e);
     }
     return null;
+  },
+
+  deleteTrip: async (tripId: string) => {
+    try {
+      const { error } = await supabase.from('trips').delete().eq('id', tripId);
+      if (error) {
+        console.error('Supabase delete error for trips:', error);
+        return false;
+      }
+      set((state) => {
+        const newTrips = state.trips.filter((t) => t.id !== tripId);
+        const newActive = state.activeTrip?.id === tripId ? (newTrips.length > 0 ? newTrips[0] : null) : state.activeTrip;
+        
+        // Clean up blocks locally
+        const newBlocks = { ...state.activityBlocks };
+        delete newBlocks[tripId];
+        
+        return {
+          trips: newTrips,
+          activeTrip: newActive,
+          activityBlocks: newBlocks,
+        };
+      });
+      return true;
+    } catch (e) {
+      console.error('Supabase delete exception for trips:', e);
+      return false;
+    }
+  },
+
+  updateActivityBlock: async (blockId, updates) => {
+    try {
+      const { data, error } = await supabase
+        .from('activity_blocks')
+        .update(updates)
+        .eq('id', blockId)
+        .select()
+        .single();
+      if (data && !error) {
+        set((state) => {
+          const newBlocks = { ...state.activityBlocks };
+          for (const tid of Object.keys(newBlocks)) {
+            const idx = newBlocks[tid].findIndex(b => b.id === blockId);
+            if (idx !== -1) {
+              newBlocks[tid] = [...newBlocks[tid].slice(0, idx), data, ...newBlocks[tid].slice(idx + 1)];
+              break;
+            }
+          }
+          return { activityBlocks: newBlocks };
+        });
+        return data as ActivityBlock;
+      }
+      if (error) console.error('updateActivityBlock error:', error);
+    } catch (e) {
+      console.error('updateActivityBlock exception:', e);
+    }
+    return null;
+  },
+
+  deleteActivityBlock: async (blockId: string, tripId: string) => {
+    try {
+      const { error } = await supabase.from('activity_blocks').delete().eq('id', blockId);
+      if (error) {
+        console.error('Supabase delete error for activity_blocks:', error);
+        return false;
+      }
+      set((state) => ({
+        activityBlocks: {
+          ...state.activityBlocks,
+          [tripId]: (state.activityBlocks[tripId] || []).filter(b => b.id !== blockId),
+        },
+      }));
+      return true;
+    } catch (e) {
+      console.error('Supabase delete exception for activity_blocks:', e);
+      return false;
+    }
   },
 
   addActivityBlock: async (block) => {

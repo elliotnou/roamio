@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Image, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,12 +13,23 @@ import { formatDate, formatTimeRange, getEnergyColor, getEnergyLabel, isBlockAct
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, activeTrip, activityBlocks, checkIns } = useTripStore();
-  const now = new Date();
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const todayBlocks = activeTrip ? (activityBlocks[activeTrip.id] || []) : [];
   const activeBlock = todayBlocks.find((b) => isBlockActive(b.start_time, b.end_time, currentMinutes));
   const checkedInIds = new Set(checkIns.map((c) => c.activity_block_id));
-  const getHour = () => { const h = now.getHours(); if (h < 12) return 'morning'; if (h < 17) return 'afternoon'; return 'evening'; };
+
+  const hour = now.getHours();
+  const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   const activeIndex = todayBlocks.findIndex((b) => b.id === activeBlock?.id);
   const pastBlocks = activeIndex > 0 ? todayBlocks.slice(0, activeIndex) : [];
@@ -29,12 +40,27 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+
+        {/* Header with date + time */}
         <View style={s.topBar}>
-          <View>
-            <Text style={s.greeting}>Hello, {user?.display_name || 'Traveler'}</Text>
-            <Text style={s.sub}>Good {getHour()}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.greeting}>Good {timeOfDay}</Text>
+            <Text style={s.greetingName}>{user?.display_name || 'Traveler'}</Text>
           </View>
-          <View style={s.avatar}><Text style={s.avatarText}>{(user?.display_name || 'T').charAt(0).toUpperCase()}</Text></View>
+          <View style={{ alignItems: 'flex-end', gap: 8 }}>
+            <View style={s.avatar}><Text style={s.avatarText}>{(user?.display_name || 'T').charAt(0).toUpperCase()}</Text></View>
+          </View>
+        </View>
+
+        {/* Date + Live Time pill */}
+        <View style={s.dateTimeRow}>
+          <Feather name="calendar" size={13} color={C.secondary} />
+          <Text style={s.dateText}>{dateStr}</Text>
+          <View style={s.timeDivider} />
+          <View style={s.timePill}>
+            <View style={s.timeDot} />
+            <Text style={s.timePillText}>{timeStr}</Text>
+          </View>
         </View>
 
         {activeTrip ? (
@@ -43,6 +69,9 @@ export default function DashboardScreen() {
               {activeTrip.destination_image ? <Image source={{ uri: activeTrip.destination_image }} style={s.heroImage} /> : <View style={[s.heroImage, { backgroundColor: C.sage }]} />}
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} />
               <View style={s.heroBottom}>
+                <View style={{ backgroundColor: C.sage, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 }}>
+                  <Text style={{ color: C.white, fontSize: 10, fontFamily: F.bold, letterSpacing: 1 }}>CURRENT TRIP</Text>
+                </View>
                 <Text style={s.heroTitle}>{activeTrip.destination}</Text>
                 <Text style={s.heroDates}>{formatDate(activeTrip.start_date)} – {formatDate(activeTrip.end_date)}  ·  {todayBlocks.length} activities</Text>
               </View>
@@ -92,7 +121,7 @@ export default function DashboardScreen() {
                 })}
               </View>
             )}
-            
+
             {upcomingBlocks.map((block) => {
               const isActive = block.id === activeBlock?.id;
               const isCheckedIn = checkedInIds.has(block.id);
@@ -135,24 +164,37 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 110 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
-  greeting: { fontSize: 32, fontFamily: F.bold, color: C.fg, letterSpacing: -0.5 },
-  sub: { fontSize: 16, fontFamily: F.medium, color: C.secondary, marginTop: 4 },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.sage, justifyContent: 'center', alignItems: 'center', shadowColor: C.sage, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  avatarText: { color: C.white, fontSize: 18, fontFamily: F.bold },
-  searchWrap: { position: 'relative', marginBottom: 24 },
-  searchIcon: { position: 'absolute', left: 16, top: 14, zIndex: 1 },
-  searchInput: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingLeft: 44, paddingRight: 16, paddingVertical: 13, fontSize: 14, fontFamily: F.regular, color: C.fg },
+
+  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  greeting: { fontSize: 28, fontFamily: F.bold, color: C.fg, letterSpacing: -0.5 },
+  greetingName: { fontSize: 16, fontFamily: F.medium, color: C.secondary, marginTop: 2 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.sage, justifyContent: 'center', alignItems: 'center', shadowColor: C.sage, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  avatarText: { color: C.white, fontSize: 17, fontFamily: F.bold },
+
+  dateTimeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: C.white, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+    marginBottom: 24, alignSelf: 'flex-start',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8,
+  },
+  dateText: { fontSize: 13, fontFamily: F.medium, color: C.secondary },
+  timeDivider: { width: 1, height: 14, backgroundColor: C.border },
+  timePill: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  timeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.sage },
+  timePillText: { fontSize: 13, fontFamily: F.bold, color: C.fg },
+
   heroCard: { width: '100%', height: 260, borderRadius: 32, overflow: 'hidden', marginBottom: 36, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 8 },
   heroImage: { width: '100%', height: '100%' },
   heroBottom: { position: 'absolute', bottom: 20, left: 24, right: 24 },
   heroTitle: { color: C.white, fontSize: 28, fontFamily: F.bold, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
   heroDates: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontFamily: F.medium, marginTop: 6, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+
   emptyCard: { backgroundColor: C.white, borderRadius: 24, padding: 32, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg, marginBottom: 8 },
   emptySub: { fontSize: 14, fontFamily: F.regular, color: C.secondary, marginBottom: 20, textAlign: 'center' },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.charcoal, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 999 },
   emptyBtnText: { color: C.white, fontFamily: F.semiBold, fontSize: 14 },
+
   section: { marginBottom: 16 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg },
@@ -165,7 +207,7 @@ const s = StyleSheet.create({
   activeText: { color: C.white, fontSize: 10, fontFamily: F.bold, letterSpacing: 1 },
   blockRow: { flexDirection: 'row', gap: 16 },
   blockIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center' },
-  blockIconActive: { backgroundColor: C.sage + '20' }, // 20 hex opacity
+  blockIconActive: { backgroundColor: C.sage + '20' },
   blockIconPast: { width: 40, height: 40, borderRadius: 12 },
   blockContent: { flex: 1, justifyContent: 'center' },
   blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },

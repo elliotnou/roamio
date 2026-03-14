@@ -12,27 +12,22 @@ import { C } from '../../../lib/colors';
 import { F } from '../../../lib/fonts';
 import type { ActivityType } from '../../../types';
 
-const ACTIVITY_TYPES: { key: ActivityType; label: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
-  { key: 'hiking', label: 'Hiking', icon: 'trending-up' },
-  { key: 'walking', label: 'Walking', icon: 'navigation' },
-  { key: 'museum', label: 'Museum', icon: 'home' },
-  { key: 'landmark', label: 'Landmark', icon: 'map-pin' },
-  { key: 'restaurant', label: 'Dining', icon: 'coffee' },
-  { key: 'cafe', label: 'Café', icon: 'coffee' },
-  { key: 'spa', label: 'Spa', icon: 'droplet' },
-  { key: 'park', label: 'Park', icon: 'sun' },
-  { key: 'beach', label: 'Beach', icon: 'sunrise' },
-  { key: 'shopping', label: 'Shopping', icon: 'shopping-bag' },
-  { key: 'market', label: 'Market', icon: 'shopping-cart' },
-  { key: 'gallery', label: 'Gallery', icon: 'image' },
-];
 
-const ENERGY_LEVELS = [
-  { value: 2, label: 'Chill', color: C.sage, icon: 'wind' as const },
-  { value: 4, label: 'Easy', color: '#a8b89a', icon: 'sun' as const },
-  { value: 6, label: 'Moderate', color: '#b8a06a', icon: 'activity' as const },
-  { value: 8, label: 'Intense', color: '#c47a6e', icon: 'zap' as const },
-];
+
+function parseTime(s: string): Date | null {
+  if (!s) return null;
+  try { const d = new Date(s); return isNaN(d.getTime()) ? null : d; } catch { return null; }
+}
+
+function hasConflict(blocks: { start_time: string; end_time: string; place_name: string }[], start: Date, end: Date): string | null {
+  const s = start.getTime(), e = end.getTime();
+  for (const b of blocks) {
+    const bs = parseTime(b.start_time)?.getTime() ?? 0;
+    const be = parseTime(b.end_time)?.getTime() ?? 0;
+    if (s < be && e > bs) return b.place_name;
+  }
+  return null;
+}
 
 function formatTime(date: Date): string {
   const h = date.getHours();
@@ -44,7 +39,15 @@ function toActivityTimestamp(tripStartDate: string, dayIndex: number, time: Date
   const base = new Date(`${tripStartDate}T00:00:00`);
   base.setDate(base.getDate() + dayIndex);
   base.setHours(time.getHours(), time.getMinutes(), 0, 0);
-  return base.toISOString();
+  
+  // Format as local ISO string to avoid UTC shift
+  const y = base.getFullYear();
+  const m = String(base.getMonth() + 1).padStart(2, '0');
+  const d = String(base.getDate()).padStart(2, '0');
+  const h = String(base.getHours()).padStart(2, '0');
+  const min = String(base.getMinutes()).padStart(2, '0');
+  const s = String(base.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d}T${h}:${min}:${s}`;
 }
 
 function formatExistingBlockTime(value: string): string {
@@ -168,6 +171,11 @@ export default function ItineraryScreen() {
       setError('Give this activity a name');
       return;
     }
+    const conflict = hasConflict(dayBlocks, startTime, endTime);
+    if (conflict) {
+      setError(`Time conflicts with "${conflict}"`);
+      return;
+    }
     setError('');
     setSuccess('');
     setLoading(true);
@@ -180,8 +188,8 @@ export default function ItineraryScreen() {
       resolved_place_name: selectedPlaceId ? placeName : null,
       resolved_lat: null,
       resolved_lng: null,
-      activity_type: activityType,
-      energy_cost_estimate: energyLevel,
+      activity_type: 'other',
+      energy_cost_estimate: 4,
       start_time: toActivityTimestamp(trip?.start_date || new Date().toISOString().split('T')[0], dayIndex, startTime),
       end_time: toActivityTimestamp(trip?.start_date || new Date().toISOString().split('T')[0], dayIndex, endTime),
     });
@@ -298,22 +306,6 @@ export default function ItineraryScreen() {
             )}
           </View>
 
-          {/* Activity type grid */}
-          <View style={s.field}>
-            <Text style={s.label}>Type</Text>
-            <View style={s.typeGrid}>
-              {ACTIVITY_TYPES.map((at) => (
-                <Pressable
-                  key={at.key}
-                  style={[s.typeChip, activityType === at.key && s.typeChipActive]}
-                  onPress={() => setActivityType(at.key)}
-                >
-                  <Feather name={at.icon} size={14} color={activityType === at.key ? C.sageDark : C.secondary} />
-                  <Text style={[s.typeLabel, activityType === at.key && s.typeLabelActive]}>{at.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
 
           {/* Time pickers */}
           <View style={s.field}>
@@ -331,22 +323,6 @@ export default function ItineraryScreen() {
             </View>
           </View>
 
-          {/* Energy level */}
-          <View style={s.field}>
-            <Text style={s.label}>Energy demand</Text>
-            <View style={s.energyRow}>
-              {ENERGY_LEVELS.map((el) => (
-                <Pressable
-                  key={el.value}
-                  style={[s.energyCard, energyLevel === el.value && { borderColor: el.color }]}
-                  onPress={() => setEnergyLevel(el.value)}
-                >
-                  <Feather name={el.icon} size={18} color={energyLevel === el.value ? el.color : C.placeholder} />
-                  <Text style={[s.energyLabel, energyLevel === el.value && { color: el.color, fontFamily: F.bold }]}>{el.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
 
           {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -370,7 +346,8 @@ export default function ItineraryScreen() {
 
       {/* Time Picker Modal */}
       <Modal visible={showTimePicker !== null} transparent animationType="slide">
-        <Pressable style={s.modalOverlay} onPress={() => setShowTimePicker(null)}>
+        <View style={s.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowTimePicker(null)} />
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
             <View style={s.modalHeader}>
@@ -390,7 +367,7 @@ export default function ItineraryScreen() {
               textColor={C.fg}
             />
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -450,16 +427,6 @@ const s = StyleSheet.create({
   suggestionPrimary: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
   suggestionSecondary: { fontSize: 12, fontFamily: F.regular, color: C.secondary, marginTop: 2 },
 
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  typeChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: C.white, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  typeChipActive: { borderColor: C.sage, backgroundColor: C.sage + '10' },
-  typeLabel: { fontSize: 13, fontFamily: F.medium, color: C.secondary },
-  typeLabelActive: { color: C.sageDark, fontFamily: F.bold },
-
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   timeBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -467,14 +434,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14,
   },
   timeBtnText: { fontSize: 15, fontFamily: F.medium, color: C.fg },
-
-  energyRow: { flexDirection: 'row', gap: 8 },
-  energyCard: {
-    flex: 1, alignItems: 'center', gap: 4,
-    backgroundColor: C.white, borderRadius: 16, paddingVertical: 14,
-    borderWidth: 2, borderColor: 'transparent',
-  },
-  energyLabel: { fontSize: 11, fontFamily: F.semiBold, color: C.secondary },
 
   error: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center', marginBottom: 12 },
   addBtn: {

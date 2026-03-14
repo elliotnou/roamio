@@ -104,6 +104,24 @@ export default function NewTripScreen() {
       setError('End date must be after start date');
       return;
     }
+
+    // Validation: Check for overlapping trips
+    const existingTrips = useTripStore.getState().trips;
+    const newStart = startDate.getTime();
+    const newEnd = endDate.getTime();
+    
+    for (const t of existingTrips) {
+      const existingStart = new Date(t.start_date).getTime();
+      const existingEnd = new Date(t.end_date).getTime();
+      
+      // Check if dates overlap
+      // Overlap occurs if (StartA <= EndB) and (EndA >= StartB)
+      if (newStart <= existingEnd && newEnd >= existingStart) {
+        setError('You already have a trip scheduled during these dates.');
+        return;
+      }
+    }
+
     setError('');
     setLoading(true);
 
@@ -238,7 +256,8 @@ export default function NewTripScreen() {
 
       {/* Date Picker Modal */}
       <Modal visible={showPicker !== null} transparent animationType="slide">
-        <Pressable style={s.modalOverlay} onPress={() => setShowPicker(null)}>
+        <View style={s.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowPicker(null)} />
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
             <View style={s.modalHeader}>
@@ -266,7 +285,7 @@ export default function NewTripScreen() {
               textColor={C.fg}
             />
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </SafeAreaView>
   );
