@@ -23,30 +23,10 @@ export function formatTimeRange(start: string, end: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-export function getActivityIcon(type: ActivityType): string {
-  const map: Record<ActivityType, string> = {
-    hiking: 'mountain',
-    walking: 'walk',
-    cycling: 'bicycle',
-    museum: 'museum',
-    gallery: 'image',
-    landmark: 'map-pin',
-    restaurant: 'utensils-crossed',
-    cafe: 'coffee',
-    shopping: 'shopping-bag',
-    market: 'store',
-    spa: 'droplets',
-    park: 'tree-pine',
-    beach: 'waves',
-    other: 'map-pin',
-  };
-  return map[type] ?? 'map-pin';
-}
-
-export function getEnergyColor(cost: number): string {
-  if (cost <= 3) return '#e8ede4';
-  if (cost <= 6) return '#f5edd4';
-  return '#f5ddd4';
+export function getEnergyColor(cost: number): { bg: string; text: string } {
+  if (cost <= 3) return { bg: '#e8ede4', text: '#5a6b4e' };
+  if (cost <= 6) return { bg: '#f5edd4', text: '#8a7340' };
+  return { bg: '#f5ddd4', text: '#8a4a40' };
 }
 
 export function getEnergyLabel(cost: number): string {
@@ -63,6 +43,5 @@ export function isBlockActive(startTime: string, endTime: string, currentMinutes
   return currentMinutes >= toMin(startTime) && currentMinutes <= toMin(endTime);
 }
 
-// Hardcoded "current time" for demo: 15:45 (3:45pm) on day 0
-export const DEMO_CURRENT_MINUTES = 15 * 60 + 45; // 945 minutes = 3:45pm
+export const DEMO_CURRENT_MINUTES = 15 * 60 + 45;
 export const DEMO_CURRENT_DAY = 0;

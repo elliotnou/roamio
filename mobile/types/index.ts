@@ -36,7 +36,6 @@ export interface ActivityBlock {
   energy_cost_estimate: number;
   start_time: string;
   end_time: string;
-  end_time: string;
 }
 
 export interface CheckIn {

@@ -1,90 +1,45 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useTripStore } from '../../store/trip-store';
 import { formatDate } from '../../lib/utils';
+import { C } from '../../lib/colors';
 
-export default function Trips() {
+export default function TripsScreen() {
+  const router = useRouter();
   const { trips, setActiveTrip } = useTripStore();
-
-  const renderTrip = ({ item }: { item: typeof trips[0] }) => (
-    <TouchableOpacity
-      style={styles.tripCard}
-      onPress={() => setActiveTrip(item)}
-    >
-      <Image
-        source={{ uri: item.destination_image }}
-        style={styles.tripImage}
-        resizeMode="cover"
-      />
-      <View style={styles.tripOverlay}>
-        <Text style={styles.tripDestination}>{item.destination}</Text>
-        <Text style={styles.tripDates}>
-          {formatDate(item.start_date)} - {formatDate(item.end_date)}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>My Trips</Text>
-      <FlatList
-        data={trips}
-        renderItem={renderTrip}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
-    </View>
+    <SafeAreaView style={s.safe}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        <View style={s.header}><Text style={s.title}>My Trips</Text><Pressable style={s.addBtn} onPress={() => router.push('/trips/new' as never)}><Feather name="plus" size={20} color={C.white} /></Pressable></View>
+        {trips.length === 0 ? (
+          <View style={s.empty}><Text style={s.emptyTitle}>No trips yet</Text><Text style={s.emptySub}>Start by creating your first wellness travel plan</Text></View>
+        ) : (
+          <View style={s.list}>
+            {trips.map((trip) => (
+              <Pressable key={trip.id} onPress={() => { setActiveTrip(trip); router.push(`/trips/${trip.id}` as never); }}>
+                <View style={s.card}>
+                  {trip.destination_image ? <Image source={{ uri: trip.destination_image }} style={s.cardImg} /> : <View style={[s.cardImg, { backgroundColor: C.sage }]} />}
+                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} />
+                  <Pressable style={s.heart}><Feather name="heart" size={18} color={C.white} /></Pressable>
+                  <View style={s.cardBottom}><Text style={s.cardTitle}>{trip.destination}</Text><Text style={s.cardDates}>{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</Text></View>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FAF8F5',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    padding: 20,
-    paddingBottom: 10,
-  },
-  list: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  tripCard: {
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  tripImage: {
-    width: '100%',
-    height: '100%',
-  },
-  tripOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: 16,
-  },
-  tripDestination: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  tripDates: {
-    fontSize: 14,
-    color: '#E8EDE4',
-    marginTop: 4,
-  },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.bg }, content: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }, title: { fontSize: 24, fontWeight: '700', color: C.fg },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.charcoal, justifyContent: 'center', alignItems: 'center' },
+  list: { gap: 20 }, card: { width: '100%', height: 200, borderRadius: 24, overflow: 'hidden' }, cardImg: { width: '100%', height: '100%' },
+  heart: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  cardBottom: { position: 'absolute', bottom: 16, left: 20, right: 20 }, cardTitle: { color: C.white, fontSize: 18, fontWeight: '700' }, cardDates: { color: 'rgba(255,255,255,0.7)', fontSize: 14, marginTop: 4 },
+  empty: { backgroundColor: C.white, borderRadius: 24, padding: 40, alignItems: 'center' }, emptyTitle: { fontSize: 18, fontWeight: '700', color: C.fg, marginBottom: 8 }, emptySub: { fontSize: 14, color: C.secondary, textAlign: 'center' },
 });
