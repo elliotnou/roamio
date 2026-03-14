@@ -18,7 +18,7 @@ function toISODate(date: Date): string {
 
 export default function NewTripScreen() {
   const router = useRouter();
-  const { addTrip } = useTripStore();
+  const { addTrip, user } = useTripStore();
   const [destination, setDestination] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -36,19 +36,20 @@ export default function NewTripScreen() {
       return;
     }
     setError('');
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 500));
-
-    addTrip({
-      id: `trip-${Date.now()}`,
-      user_id: 'user-001',
+    const data = await addTrip({
+      user_id: user?.id || '',
       destination,
       start_date: toISODate(startDate),
       end_date: toISODate(endDate),
-      created_at: new Date().toISOString(),
     });
+
     setLoading(false);
-    router.back();
+
+    if (data) {
+      router.back();
+    } else {
+      setError('Failed to create trip');
+    }
   };
 
   return (

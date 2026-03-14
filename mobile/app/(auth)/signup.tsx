@@ -15,11 +15,29 @@ export default function SignupScreen() {
   const [error, setError] = useState('');
 
   const handleSignup = async () => {
+    if (!email || !password || !name) { setError('Please fill in all fields'); return; }
     if (password !== confirm) { setError('Passwords do not match'); return; }
+    
     setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.replace('/(tabs)');
+    
+    const { error } = await import('../../lib/supabase').then(m => m.supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          display_name: name,
+        }
+      }
+    }));
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      router.replace('/(tabs)');
+    }
   };
 
   return (

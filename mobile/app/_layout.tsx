@@ -1,6 +1,9 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { useTripStore } from '../store/trip-store';
 import { useFonts } from 'expo-font';
 import {
   InstrumentSans_400Regular,
@@ -18,7 +21,45 @@ export default function RootLayout() {
     InstrumentSans_700Bold,
   });
 
-  if (!fontsLoaded) {
+  const [isReady, setIsReady] = useState(false);
+  const router = useRouter();
+  const segments = useSegments();
+  const { fetchData } = useTripStore();
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        await fetchData();
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/login');
+      }
+      setIsReady(true);
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isReady) return;
+      
+      if (session) {
+        await fetchData();
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/login');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fontsLoaded, isReady]);
+
+  if (!fontsLoaded || !isReady) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg }}>
         <ActivityIndicator color={C.charcoal} />

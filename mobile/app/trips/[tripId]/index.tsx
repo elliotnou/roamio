@@ -234,15 +234,15 @@ const s = StyleSheet.create({
   notFoundTitle: { fontSize: 20, fontFamily: F.bold, color: C.fg, marginBottom: 8 },
   notFoundLink: { fontSize: 14, fontFamily: F.semiBold, color: C.sage },
 
-  hero: { width: '100%', height: 280 },
+  hero: { width: '100%', height: 320 },
   heroImage: { width: '100%', height: '100%' },
-  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  heroBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center' },
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16 },
+  heroBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
 
-  info: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
-  tripName: { fontSize: 26, fontFamily: F.bold, color: C.fg },
-  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  tripDates: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
+  info: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
+  tripName: { fontSize: 34, fontFamily: F.bold, color: C.fg, letterSpacing: -0.5 },
+  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  tripDates: { fontSize: 16, fontFamily: F.medium, color: C.secondary },
 
   tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
   tab: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
@@ -250,13 +250,13 @@ const s = StyleSheet.create({
   tabText: { fontSize: 14, fontFamily: F.semiBold, color: C.secondary },
   tabTextActive: { color: C.white },
 
-  dayList: { gap: 12, marginTop: 8 },
-  dayCard: { backgroundColor: C.white, borderRadius: 16, overflow: 'hidden' },
-  dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
+  dayList: { gap: 16, marginTop: 12 },
+  dayCard: { backgroundColor: C.white, borderRadius: 24, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 20 },
   dayHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dayTitle: { fontSize: 16, fontFamily: F.bold, color: C.fg },
-  dayBadge: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999 },
-  dayBadgeText: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
+  dayTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg },
+  dayBadge: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  dayBadgeText: { fontSize: 13, fontFamily: F.bold, color: C.secondary },
 
   dayContent: { paddingHorizontal: 20, paddingBottom: 16 },
   todGroup: { marginBottom: 16 },
@@ -280,7 +280,7 @@ const s = StyleSheet.create({
 
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 14, marginTop: 20,
+    backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 16, marginTop: 24,
   },
-  addBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
+  addBtnText: { color: C.white, fontSize: 16, fontFamily: F.semiBold },
 });

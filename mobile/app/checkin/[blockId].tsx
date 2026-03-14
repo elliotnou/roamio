@@ -30,12 +30,11 @@ export default function CheckInScreen() {
     }
   }, [affirmed, router]);
 
-  const handleSelect = (mood: typeof moods[number]) => {
+  const handleSelect = async (mood: typeof moods[number]) => {
     setSelected(mood.key);
 
     if (block) {
-      submitCheckIn({
-        id: `checkin-${Date.now()}`,
+      await submitCheckIn({
         activity_block_id: block.id,
         user_id: user.id,
         energy_level: mood.level,
@@ -44,17 +43,14 @@ export default function CheckInScreen() {
         agent_outcome: mood.level <= 4 ? 'rerouted' : 'affirmed',
         selected_place_id: null,
         selected_place_name: null,
-        timestamp: new Date().toISOString(),
       });
     }
 
-    setTimeout(() => {
-      if (mood.level <= 4) {
-        router.replace(`/checkin/suggestions?blockId=${blockId}` as never);
-      } else {
-        setAffirmed(true);
-      }
-    }, 400);
+    if (mood.level <= 4) {
+      router.replace(`/checkin/suggestions?blockId=${blockId}` as never);
+    } else {
+      setAffirmed(true);
+    }
   };
 
   return (

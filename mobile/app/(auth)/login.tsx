@@ -10,11 +10,28 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSignIn = async () => {
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      return;
+    }
+    setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.replace('/(tabs)');
+    
+    const { error } = await import('../../lib/supabase').then(m => m.supabase.auth.signInWithPassword({
+      email,
+      password,
+    }));
+
+    setLoading(false);
+    
+    if (error) {
+      setError(error.message);
+    } else {
+      router.replace('/(tabs)');
+    }
   };
 
   return (
@@ -42,6 +59,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry
             />
+            {error ? <Text style={s.error}>{error}</Text> : null}
             <Pressable style={s.btn} onPress={handleSignIn} disabled={loading}>
               {loading ? <ActivityIndicator color={C.white} /> : <Text style={s.btnText}>Sign In</Text>}
             </Pressable>
@@ -74,5 +92,6 @@ const s = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
   footerText: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
   link: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
+  error: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center' },
   demo: { fontSize: 12, fontFamily: F.regular, color: C.placeholder, textAlign: 'center', marginTop: 24 },
 });

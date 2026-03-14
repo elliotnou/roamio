@@ -29,11 +29,7 @@ export default function ItineraryScreen() {
       return;
     }
     setError('');
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 500));
-
-    addActivityBlock({
-      id: `block-${Date.now()}`,
+    const data = await addActivityBlock({
       trip_id: tripId ?? '',
       day_index: dayIndex,
       place_name: placeName,
@@ -48,7 +44,12 @@ export default function ItineraryScreen() {
     });
 
     setLoading(false);
-    router.back();
+
+    if (data) {
+      router.back();
+    } else {
+      setError('Failed to add activity');
+    }
   };
 
   return (

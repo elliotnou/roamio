@@ -16,7 +16,18 @@ const menuItems: { icon: React.ComponentProps<typeof Feather>['name']; label: st
 export default function ProfileScreen() {
   const router = useRouter();
   const { user } = useTripStore();
-  const initials = user.display_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  
+  // Guard against null user states during transitions
+  if (!user) return null;
+
+  const initials = user.display_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+
+  const handleSignOut = async () => {
+    const { supabase } = await import('../../lib/supabase');
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -45,7 +56,7 @@ export default function ProfileScreen() {
             </Pressable>
           ))}
         </View>
-        <Pressable onPress={() => router.replace('/login')} style={s.signout}>
+        <Pressable onPress={handleSignOut} style={s.signout}>
           <Text style={s.signoutText}>Sign Out</Text>
         </Pressable>
         <Text style={s.version}>TripPulse v1.0.0</Text>
