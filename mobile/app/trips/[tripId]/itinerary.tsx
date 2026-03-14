@@ -240,6 +240,13 @@ export default function ItineraryScreen() {
               </>
             )}
           </Pressable>
+
+          {success ? (
+            <View style={s.successBanner}>
+              <Feather name="check-circle" size={16} color={C.sageDark} />
+              <Text style={s.successText}>{success}</Text>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 

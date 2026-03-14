@@ -51,10 +51,13 @@ alter table public.trips enable row level security;
 alter table public.activity_blocks enable row level security;
 alter table public.check_ins enable row level security;
 
-create policy "own_user" on public.users for all using (auth.uid() = id);
-create policy "own_trips" on public.trips for all using (auth.uid() = user_id);
+create policy "own_user" on public.users for all using (auth.uid() = id) with check (auth.uid() = id);
+create policy "own_trips" on public.trips for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own_blocks" on public.activity_blocks for all
   using (exists (
     select 1 from public.trips where id = trip_id and user_id = auth.uid()
+  ))
+  with check (exists (
+    select 1 from public.trips where id = trip_id and user_id = auth.uid()
   ));
-create policy "own_checkins" on public.check_ins for all using (auth.uid() = user_id);
+create policy "own_checkins" on public.check_ins for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
