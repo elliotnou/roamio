@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTripStore } from '../../../store/trip-store';
 import { getDayCount } from '../../../lib/utils';
 import { C } from '../../../lib/colors';
+import { F } from '../../../lib/fonts';
 
 export default function ItineraryScreen() {
   const router = useRouter();
@@ -54,7 +55,6 @@ export default function ItineraryScreen() {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-          {/* Header */}
           <View style={s.header}>
             <Pressable onPress={() => router.back()} style={s.backBtn}>
               <Feather name="arrow-left" size={18} color={C.fg} />
@@ -63,7 +63,6 @@ export default function ItineraryScreen() {
             <View style={{ width: 40 }} />
           </View>
 
-          {/* Day selector */}
           <View style={s.field}>
             <Text style={s.label}>Day</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.dayRow}>
@@ -75,7 +74,6 @@ export default function ItineraryScreen() {
             </ScrollView>
           </View>
 
-          {/* Place name */}
           <View style={s.field}>
             <Text style={s.label}>Place name</Text>
             <View style={s.inputRow}>
@@ -84,7 +82,6 @@ export default function ItineraryScreen() {
             </View>
           </View>
 
-          {/* Times */}
           <View style={s.field}>
             <Text style={s.label}>Start time</Text>
             <View style={s.inputRow}>
@@ -101,7 +98,6 @@ export default function ItineraryScreen() {
             </View>
           </View>
 
-          {/* AI hint */}
           <View style={s.hint}>
             <Feather name="zap" size={14} color={C.sage} />
             <Text style={s.hintText}>Our AI will automatically classify this activity and estimate its energy demand</Text>
@@ -123,26 +119,26 @@ const s = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.white, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 18, fontWeight: '700', color: C.fg },
+  title: { fontSize: 18, fontFamily: F.bold, color: C.fg },
   field: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: C.fg, marginBottom: 8 },
+  label: { fontSize: 14, fontFamily: F.semiBold, color: C.fg, marginBottom: 8 },
   dayRow: { gap: 8 },
-  dayPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: C.white },
+  dayPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
   dayPillActive: { backgroundColor: C.charcoal },
-  dayPillText: { fontSize: 14, fontWeight: '600', color: C.secondary },
+  dayPillText: { fontSize: 14, fontFamily: F.semiBold, color: C.secondary },
   dayPillTextActive: { color: C.white },
   inputRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16,
     paddingHorizontal: 16, paddingVertical: 14,
   },
-  input: { flex: 1, fontSize: 14, color: C.fg },
+  input: { flex: 1, fontSize: 14, fontFamily: F.regular, color: C.fg },
   hint: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: C.eHighBg, borderRadius: 12, padding: 12, marginBottom: 20,
   },
-  hintText: { flex: 1, fontSize: 12, color: C.eHighText },
-  error: { color: C.eLowText, fontSize: 13, textAlign: 'center', marginBottom: 12 },
+  hintText: { flex: 1, fontSize: 12, fontFamily: F.regular, color: C.eHighText },
+  error: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center', marginBottom: 12 },
   submitBtn: { backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 16, alignItems: 'center' },
-  submitText: { color: C.white, fontSize: 16, fontWeight: '600' },
+  submitText: { color: C.white, fontSize: 16, fontFamily: F.semiBold },
 });

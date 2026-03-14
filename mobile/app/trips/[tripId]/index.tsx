@@ -1,13 +1,16 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { useState, useRef } from 'react';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet, Dimensions, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTripStore } from '../../../store/trip-store';
-import { ActivityIcon } from '../../../components/ActivityIcon';
 import { C } from '../../../lib/colors';
+import { F } from '../../../lib/fonts';
 import { formatDate, getDayCount, formatTimeRange, getEnergyColor, getEnergyLabel } from '../../../lib/utils';
+
+const TABS = ['Itinerary', 'Activities', 'Details'] as const;
+const SCREEN_W = Dimensions.get('window').width;
 
 export default function TripDetailScreen() {
   const router = useRouter();
@@ -19,8 +22,10 @@ export default function TripDetailScreen() {
   const checkedInIds = new Set(checkIns.map((c) => c.activity_block_id));
   const dayCount = trip ? getDayCount(trip.start_date, trip.end_date) : 0;
 
-  const [activeTab, setActiveTab] = useState<'itinerary' | 'activities' | 'details'>('itinerary');
+  const [activeTab, setActiveTab] = useState(0);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
+  const scrollRef = useRef<ScrollView>(null);
+  const indicatorAnim = useRef(new Animated.Value(0)).current;
 
   const toggleDay = (d: number) => {
     setExpandedDays((prev) => {
@@ -28,6 +33,12 @@ export default function TripDetailScreen() {
       next.has(d) ? next.delete(d) : next.add(d);
       return next;
     });
+  };
+
+  const handleTabPress = (idx: number) => {
+    setActiveTab(idx);
+    scrollRef.current?.scrollTo({ x: idx * (SCREEN_W - 40), animated: true });
+    Animated.spring(indicatorAnim, { toValue: idx, useNativeDriver: true }).start();
   };
 
   const getTimeOfDay = (time: string): string => {
@@ -60,10 +71,10 @@ export default function TripDetailScreen() {
           ) : (
             <View style={[s.heroImage, { backgroundColor: C.sage }]} />
           )}
-          <LinearGradient colors={['rgba(0,0,0,0.2)', 'transparent', 'rgba(0,0,0,0.4)']} style={StyleSheet.absoluteFill} />
+          <LinearGradient colors={['rgba(0,0,0,0.3)', 'transparent', 'rgba(0,0,0,0.5)']} style={StyleSheet.absoluteFill} />
           <SafeAreaView style={s.heroOverlay}>
             <Pressable onPress={() => router.back()} style={s.heroBtn}>
-              <Feather name="arrow-left" size={18} color={C.white} />
+              <Feather name="chevron-left" size={20} color={C.white} />
             </Pressable>
             <Pressable style={s.heroBtn}>
               <Feather name="heart" size={18} color={C.white} />
@@ -74,23 +85,41 @@ export default function TripDetailScreen() {
         {/* Trip info */}
         <View style={s.info}>
           <Text style={s.tripName}>{trip.destination}</Text>
-          <Text style={s.tripDates}>{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</Text>
+          <View style={s.tripMeta}>
+            <Feather name="calendar" size={14} color={C.secondary} />
+            <Text style={s.tripDates}>{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</Text>
+          </View>
         </View>
 
         {/* Tab pills */}
         <View style={s.tabs}>
-          {(['itinerary', 'activities', 'details'] as const).map((tab) => (
-            <Pressable key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-              <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </Text>
+          {TABS.map((tab, idx) => (
+            <Pressable key={tab} onPress={() => handleTabPress(idx)} style={[s.tab, activeTab === idx && s.tabActive]}>
+              <Text style={[s.tabText, activeTab === idx && s.tabTextActive]}>{tab}</Text>
             </Pressable>
           ))}
         </View>
 
-        {/* Content */}
-        <View style={s.content}>
-          {activeTab === 'itinerary' && (
+        {/* Swipeable content */}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 40));
+            if (idx !== activeTab) {
+              setActiveTab(idx);
+              Animated.spring(indicatorAnim, { toValue: idx, useNativeDriver: true }).start();
+            }
+          }}
+          snapToInterval={SCREEN_W - 40}
+          decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 0 }}
+        >
+          {/* Tab 1: Itinerary */}
+          <View style={{ width: SCREEN_W - 40, paddingHorizontal: 20 }}>
             <View style={s.dayList}>
               {Array.from({ length: dayCount }, (_, dayIndex) => {
                 const dayBlocks = blocks
@@ -164,21 +193,31 @@ export default function TripDetailScreen() {
                 );
               })}
             </View>
-          )}
+          </View>
 
-          {activeTab === 'activities' && (
+          {/* Tab 2: Activities */}
+          <View style={{ width: SCREEN_W - 40, paddingHorizontal: 20 }}>
             <View style={s.placeholder}>
+              <View style={s.placeholderIcon}>
+                <Feather name="list" size={24} color={C.placeholder} />
+              </View>
               <Text style={s.placeholderText}>{blocks.length} activities across {dayCount} days</Text>
             </View>
-          )}
+          </View>
 
-          {activeTab === 'details' && (
+          {/* Tab 3: Details */}
+          <View style={{ width: SCREEN_W - 40, paddingHorizontal: 20 }}>
             <View style={s.placeholder}>
+              <View style={s.placeholderIcon}>
+                <Feather name="info" size={24} color={C.placeholder} />
+              </View>
               <Text style={s.placeholderText}>Trip details coming soon</Text>
             </View>
-          )}
+          </View>
+        </ScrollView>
 
-          {/* Add Activity */}
+        {/* Add Activity */}
+        <View style={{ paddingHorizontal: 20, paddingBottom: 32 }}>
           <Pressable style={s.addBtn} onPress={() => router.push(`/trips/${tripId}/itinerary` as never)}>
             <Feather name="plus" size={16} color={C.white} />
             <Text style={s.addBtnText}>Add Activity</Text>
@@ -192,55 +231,56 @@ export default function TripDetailScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   notFound: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  notFoundTitle: { fontSize: 20, fontWeight: '700', color: C.fg, marginBottom: 8 },
-  notFoundLink: { fontSize: 14, fontWeight: '600', color: C.sage },
+  notFoundTitle: { fontSize: 20, fontFamily: F.bold, color: C.fg, marginBottom: 8 },
+  notFoundLink: { fontSize: 14, fontFamily: F.semiBold, color: C.sage },
 
-  hero: { width: '100%', height: 260 },
+  hero: { width: '100%', height: 280 },
   heroImage: { width: '100%', height: '100%' },
   heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8 },
-  heroBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  heroBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center' },
 
   info: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
-  tripName: { fontSize: 24, fontWeight: '700', color: C.fg },
-  tripDates: { fontSize: 14, color: C.secondary, marginTop: 4 },
+  tripName: { fontSize: 26, fontFamily: F.bold, color: C.fg },
+  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  tripDates: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
 
   tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
-  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: C.white },
+  tab: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
   tabActive: { backgroundColor: C.charcoal },
-  tabText: { fontSize: 14, fontWeight: '600', color: C.secondary },
+  tabText: { fontSize: 14, fontFamily: F.semiBold, color: C.secondary },
   tabTextActive: { color: C.white },
 
-  content: { paddingHorizontal: 20, paddingBottom: 32 },
   dayList: { gap: 12, marginTop: 8 },
   dayCard: { backgroundColor: C.white, borderRadius: 16, overflow: 'hidden' },
   dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 },
   dayHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dayTitle: { fontSize: 16, fontWeight: '700', color: C.fg },
+  dayTitle: { fontSize: 16, fontFamily: F.bold, color: C.fg },
   dayBadge: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 2, borderRadius: 999 },
-  dayBadgeText: { fontSize: 12, color: C.secondary },
+  dayBadgeText: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
 
   dayContent: { paddingHorizontal: 20, paddingBottom: 16 },
   todGroup: { marginBottom: 16 },
-  todLabel: { fontSize: 10, fontWeight: '600', color: C.placeholder, letterSpacing: 1, marginBottom: 8 },
+  todLabel: { fontSize: 10, fontFamily: F.semiBold, color: C.placeholder, letterSpacing: 1, marginBottom: 8 },
   blockRow: { flexDirection: 'row', gap: 12, paddingVertical: 8 },
   blockTime: { width: 56 },
-  blockTimeText: { fontSize: 12, color: C.secondary, fontWeight: '500' },
+  blockTimeText: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
   blockInfo: { flex: 1 },
   blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  blockName: { fontSize: 14, fontWeight: '600', color: C.fg, flex: 1 },
+  blockName: { fontSize: 14, fontFamily: F.semiBold, color: C.fg, flex: 1 },
   energyBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  energyText: { fontSize: 10, fontWeight: '600' },
-  blockTimeRange: { fontSize: 12, color: C.placeholder, marginTop: 2 },
+  energyText: { fontSize: 10, fontFamily: F.semiBold },
+  blockTimeRange: { fontSize: 12, fontFamily: F.regular, color: C.placeholder, marginTop: 2 },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   doneDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.sage },
-  doneText: { fontSize: 12, color: C.eHighText, fontWeight: '500' },
+  doneText: { fontSize: 12, fontFamily: F.medium, color: C.eHighText },
 
-  placeholder: { paddingVertical: 40, alignItems: 'center' },
-  placeholderText: { fontSize: 14, color: C.secondary },
+  placeholder: { paddingVertical: 60, alignItems: 'center', gap: 12 },
+  placeholderIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center' },
+  placeholderText: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
 
   addBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 14, marginTop: 20,
   },
-  addBtnText: { color: C.white, fontSize: 14, fontWeight: '600' },
+  addBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
 });

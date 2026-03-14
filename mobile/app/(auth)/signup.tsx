@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingVi
 import { useRouter, Link } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { C } from '../../lib/colors';
+import { F } from '../../lib/fonts';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -53,29 +54,17 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1 },
   center: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 40 },
-  logo: { fontSize: 48, fontWeight: '700', color: C.sage, textAlign: 'center' },
-  tagline: { fontSize: 14, color: C.secondary, textAlign: 'center', marginTop: 12, marginBottom: 48 },
+  logo: { fontSize: 44, fontFamily: F.bold, color: C.fg, textAlign: 'center', letterSpacing: -1 },
+  tagline: { fontSize: 14, fontFamily: F.regular, color: C.secondary, textAlign: 'center', marginTop: 8, marginBottom: 48 },
   form: { gap: 14 },
   input: {
-    backgroundColor: C.white,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    fontSize: 14,
-    color: C.fg,
+    backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16,
+    paddingHorizontal: 20, paddingVertical: 14, fontSize: 14, fontFamily: F.regular, color: C.fg,
   },
-  btn: {
-    backgroundColor: C.charcoal,
-    borderRadius: 999,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  btnText: { color: C.white, fontWeight: '600', fontSize: 16 },
-  error: { color: C.eLowText, fontSize: 13, textAlign: 'center' },
+  btn: { backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 16, alignItems: 'center', marginTop: 4 },
+  btnText: { color: C.white, fontFamily: F.semiBold, fontSize: 16 },
+  error: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center' },
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
-  footerText: { fontSize: 14, color: C.secondary },
-  link: { fontSize: 14, fontWeight: '600', color: C.sageDark },
+  footerText: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
+  link: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
 });
