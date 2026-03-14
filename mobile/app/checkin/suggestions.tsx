@@ -104,10 +104,6 @@ export default function SuggestionsScreen() {
                 )}
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFill} />
 
-                <Pressable style={s.cardHeart}>
-                  <Feather name="heart" size={18} color={C.white} />
-                </Pressable>
-
                 <View style={[s.energyBadge, { backgroundColor: getEnergyBadgeColor(suggestion.energy_cost_label) }]}>
                   <Text style={s.energyBadgeText}>{suggestion.energy_cost_label} energy</Text>
                 </View>

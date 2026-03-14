@@ -77,7 +77,7 @@ export default function TripDetailScreen() {
               <Feather name="chevron-left" size={20} color={C.white} />
             </Pressable>
             <Pressable style={s.heroBtn}>
-              <Feather name="heart" size={18} color={C.white} />
+              <Feather name="share" size={18} color={C.white} />
             </Pressable>
           </SafeAreaView>
         </View>

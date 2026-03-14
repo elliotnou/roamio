@@ -51,17 +51,21 @@ export const useTripStore = create<TripStore>((set, get) => ({
       
       const tripIds = trips.map(t => t.id);
       
-      const { data: blocks } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
+      let blocks: any[] = [];
+      if (tripIds.length > 0) {
+        const { data } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
+        if (data) blocks = data;
+      }
+
       const { data: checkIns } = await supabase.from('check_ins').select('*').eq('user_id', userId);
 
       const blocksMap: Record<string, ActivityBlock[]> = {};
       trips.forEach(t => { blocksMap[t.id] = [] });
-      if (blocks) {
-        blocks.forEach(b => {
-          if (!blocksMap[b.trip_id]) blocksMap[b.trip_id] = [];
-          blocksMap[b.trip_id].push(b);
-        });
-      }
+      
+      blocks.forEach(b => {
+        if (!blocksMap[b.trip_id]) blocksMap[b.trip_id] = [];
+        blocksMap[b.trip_id].push(b);
+      });
 
       set({
         trips,
@@ -124,8 +128,12 @@ export const useTripStore = create<TripStore>((set, get) => ({
           };
         });
         return data;
+      } else if (error) {
+        console.error("Supabase insert error for activity_blocks:", error);
       }
-    } catch {}
+    } catch (e) {
+      console.error("Supabase insert exception for activity_blocks:", e);
+    }
     // Fallback: create locally
     const localBlock = { ...block, id: 'local-' + Date.now(), created_at: new Date().toISOString() } as any;
     set((state) => {
@@ -148,7 +156,17 @@ export const useTripStore = create<TripStore>((set, get) => ({
     } catch {}
     if (!userId) return;
     
-    const dbCheckIn = { ...checkIn, user_id: userId };
+    const dbCheckIn = { 
+      activity_block_id: checkIn.activity_block_id,
+      user_id: userId,
+      energy_level: checkIn.energy_level,
+      current_lat: checkIn.current_lat,
+      current_lng: checkIn.current_lng,
+      agent_outcome: checkIn.agent_outcome,
+      selected_place_id: checkIn.selected_place_id || null,
+      selected_place_name: checkIn.selected_place_name || null 
+    };
+
     try {
       const { data, error } = await supabase.from('check_ins').insert([dbCheckIn]).select().single();
       if (data && !error) {
@@ -157,8 +175,12 @@ export const useTripStore = create<TripStore>((set, get) => ({
           energyLevel: null,
         }));
         return;
+      } else {
+        console.error("Supabase insert error for check_ins:", error);
       }
-    } catch {}
+    } catch (err) {
+      console.error("Supabase insert exception for check_ins:", err);
+    }
     // Fallback: store locally
     const localCheckIn = { ...dbCheckIn, id: 'local-' + Date.now(), timestamp: new Date().toISOString() } as any;
     set((state) => ({

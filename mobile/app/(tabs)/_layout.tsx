@@ -35,7 +35,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} /> }} />
       <Tabs.Screen name="trips" options={{ tabBarIcon: ({ color }) => <Feather name="map" size={22} color={color} /> }} />
-      <Tabs.Screen name="favorites" options={{ tabBarIcon: ({ color }) => <Feather name="heart" size={22} color={color} /> }} />
+      <Tabs.Screen name="favorites" options={{ tabBarIcon: ({ color }) => <Feather name="bar-chart-2" size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} /> }} />
     </Tabs>
   );

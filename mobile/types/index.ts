@@ -19,6 +19,7 @@ export interface Trip {
   destination: string;
   start_date: string;
   end_date: string;
+  travel_vibes?: string[];
   created_at: string;
   destination_image?: string;
 }

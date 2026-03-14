@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, TextInput, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -8,15 +8,17 @@ import { useTripStore } from '../../store/trip-store';
 import { ActivityIcon } from '../../components/ActivityIcon';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
-import { formatTimeRange, getEnergyColor, getEnergyLabel, isBlockActive, DEMO_CURRENT_MINUTES, DEMO_CURRENT_DAY } from '../../lib/utils';
+import { formatDate, formatTimeRange, getEnergyColor, getEnergyLabel, isBlockActive } from '../../lib/utils';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, activeTrip, activityBlocks, checkIns } = useTripStore();
-  const todayBlocks = activeTrip ? (activityBlocks[activeTrip.id] || []).filter((b) => b.day_index === DEMO_CURRENT_DAY) : [];
-  const activeBlock = todayBlocks.find((b) => isBlockActive(b.start_time, b.end_time, DEMO_CURRENT_MINUTES));
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const todayBlocks = activeTrip ? (activityBlocks[activeTrip.id] || []) : [];
+  const activeBlock = todayBlocks.find((b) => isBlockActive(b.start_time, b.end_time, currentMinutes));
   const checkedInIds = new Set(checkIns.map((c) => c.activity_block_id));
-  const getHour = () => { const h = Math.floor(DEMO_CURRENT_MINUTES / 60); if (h < 12) return 'morning'; if (h < 17) return 'afternoon'; return 'evening'; };
+  const getHour = () => { const h = now.getHours(); if (h < 12) return 'morning'; if (h < 17) return 'afternoon'; return 'evening'; };
 
   const activeIndex = todayBlocks.findIndex((b) => b.id === activeBlock?.id);
   const pastBlocks = activeIndex > 0 ? todayBlocks.slice(0, activeIndex) : [];
@@ -35,24 +37,14 @@ export default function DashboardScreen() {
           <View style={s.avatar}><Text style={s.avatarText}>{(user?.display_name || 'T').charAt(0).toUpperCase()}</Text></View>
         </View>
 
-        <View style={s.searchWrap}>
-          <Feather name="search" size={18} color={C.placeholder} style={s.searchIcon} />
-          <TextInput style={s.searchInput} placeholder="Search destinations..." placeholderTextColor={C.placeholder} editable={false} />
-        </View>
-
         {activeTrip ? (
           <Pressable onPress={() => router.push(`/trips/${activeTrip.id}` as never)}>
             <View style={s.heroCard}>
               {activeTrip.destination_image ? <Image source={{ uri: activeTrip.destination_image }} style={s.heroImage} /> : <View style={[s.heroImage, { backgroundColor: C.sage }]} />}
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} />
-              <Pressable style={s.heartBtn}><Feather name="heart" size={18} color={C.white} /></Pressable>
               <View style={s.heroBottom}>
                 <Text style={s.heroTitle}>{activeTrip.destination}</Text>
-                <View style={s.ratingRow}>
-                  <Feather name="star" size={14} color={C.amber} />
-                  <Text style={s.ratingText}>4.8</Text>
-                  <Text style={s.ratingCount}>(2.4k reviews)</Text>
-                </View>
+                <Text style={s.heroDates}>{formatDate(activeTrip.start_date)} – {formatDate(activeTrip.end_date)}  ·  {todayBlocks.length} activities</Text>
               </View>
             </View>
           </Pressable>
@@ -121,7 +113,7 @@ export default function DashboardScreen() {
                         </View>
                       </View>
                       {isCheckedIn && <View style={s.doneRow}><View style={s.doneDot} /><Text style={s.doneText}>Done</Text></View>}
-                      {isActive && !isCheckedIn && (
+                      {!isCheckedIn && (
                         <Pressable style={s.checkinBtn} onPress={() => router.push(`/checkin/${block.id}` as never)}>
                           <Feather name="check-circle" size={14} color={C.white} />
                           <Text style={s.checkinBtnText}>Check In</Text>
@@ -153,12 +145,9 @@ const s = StyleSheet.create({
   searchInput: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingLeft: 44, paddingRight: 16, paddingVertical: 13, fontSize: 14, fontFamily: F.regular, color: C.fg },
   heroCard: { width: '100%', height: 260, borderRadius: 32, overflow: 'hidden', marginBottom: 36, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 8 },
   heroImage: { width: '100%', height: '100%' },
-  heartBtn: { position: 'absolute', top: 20, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.25)', justifyContent: 'center', alignItems: 'center' },
   heroBottom: { position: 'absolute', bottom: 20, left: 24, right: 24 },
   heroTitle: { color: C.white, fontSize: 28, fontFamily: F.bold, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  ratingText: { color: 'rgba(255,255,255,0.9)', fontSize: 14, fontFamily: F.semiBold },
-  ratingCount: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontFamily: F.regular },
+  heroDates: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontFamily: F.medium, marginTop: 6, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   emptyCard: { backgroundColor: C.white, borderRadius: 24, padding: 32, alignItems: 'center' },
   emptyTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg, marginBottom: 8 },
   emptySub: { fontSize: 14, fontFamily: F.regular, color: C.secondary, marginBottom: 20, textAlign: 'center' },

@@ -29,10 +29,9 @@ export default function TripsScreen() {
           <View style={s.list}>
             {trips.map((trip) => (
               <Pressable key={trip.id} onPress={() => { setActiveTrip(trip); router.push(`/trips/${trip.id}` as never); }}>
-                <View style={s.card}>
+              <View style={s.card}>
                   {trip.destination_image ? <Image source={{ uri: trip.destination_image }} style={s.cardImg} /> : <View style={[s.cardImg, { backgroundColor: C.sage }]} />}
                   <LinearGradient colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.6)']} style={StyleSheet.absoluteFill} />
-                  <Pressable style={s.heart}><Feather name="heart" size={18} color={C.white} /></Pressable>
                   <View style={s.cardBottom}>
                     <Text style={s.cardTitle}>{trip.destination}</Text>
                     <Text style={s.cardDates}>{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</Text>
