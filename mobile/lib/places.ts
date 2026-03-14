@@ -72,6 +72,39 @@ export async function fetchPlaceAutocomplete(query: string): Promise<PlaceAutoco
     }
 
     return results;
+<<<<<<< HEAD
+=======
+}
+
+export async function fetchPlacePrimaryPhotoUrl(placeId: string): Promise<string | null> {
+    const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
+    const normalizedPlaceId = placeId.trim();
+
+    if (!key || !normalizedPlaceId) {
+        return null;
+    }
+
+    const detailsResponse = await fetch(`https://places.googleapis.com/v1/places/${normalizedPlaceId}`, {
+        method: 'GET',
+        headers: {
+            'X-Goog-Api-Key': key,
+            'X-Goog-FieldMask': 'photos',
+        },
+    });
+
+    if (!detailsResponse.ok) {
+        return null;
+    }
+
+    const detailsData = (await detailsResponse.json()) as GooglePlaceDetailsResponse;
+    const firstPhotoName = detailsData.photos?.[0]?.name?.trim();
+
+    if (!firstPhotoName) {
+        return null;
+    }
+
+    return `https://places.googleapis.com/v1/${firstPhotoName}/media?maxWidthPx=1200&key=${encodeURIComponent(key)}`;
+>>>>>>> d9ecba0c (merging)
 }
 
 // ─── Nearby Places (for check-in alternative suggestions) ───
