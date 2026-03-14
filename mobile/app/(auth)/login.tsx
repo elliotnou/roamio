@@ -2,19 +2,46 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
+import { useTripStore } from '../../store/trip-store';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { fetchData } = useTripStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSignIn = async () => {
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      return;
+    }
+    setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.replace('/(tabs)');
+    
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        setLoading(false);
+        return;
+      }
+
+      await fetchData();
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,6 +69,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry
             />
+            {error ? <Text style={s.error}>{error}</Text> : null}
             <Pressable style={s.btn} onPress={handleSignIn} disabled={loading}>
               {loading ? <ActivityIndicator color={C.white} /> : <Text style={s.btnText}>Sign In</Text>}
             </Pressable>
@@ -51,7 +79,21 @@ export default function LoginScreen() {
             <Text style={s.footerText}>Don't have an account? </Text>
             <Link href="/signup" style={s.link}>Create one</Link>
           </View>
-          <Text style={s.demo}>Demo — enter any email and password</Text>
+
+          <Pressable
+            style={[s.btn, { backgroundColor: '#888', marginTop: 20, marginHorizontal: 32 }]}
+            onPress={() => {
+              useTripStore.getState().setUser({
+                id: 'dev-user',
+                email: 'dev@test.com',
+                display_name: 'Dev User',
+                created_at: new Date().toISOString(),
+              });
+              router.replace('/(tabs)');
+            }}
+          >
+            <Text style={s.btnText}>Skip to App (Dev)</Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -74,5 +116,5 @@ const s = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
   footerText: { fontSize: 14, fontFamily: F.regular, color: C.secondary },
   link: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
-  demo: { fontSize: 12, fontFamily: F.regular, color: C.placeholder, textAlign: 'center', marginTop: 24 },
+  error: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, textAlign: 'center' },
 });

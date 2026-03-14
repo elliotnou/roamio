@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator } from 'react-native';
 import { useFonts } from 'expo-font';
+import { View, ActivityIndicator } from 'react-native';
 import {
   InstrumentSans_400Regular,
   InstrumentSans_500Medium,

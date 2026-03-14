@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, ScrollView } from 'react-native';
 import { useRouter, Link } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
+import { useTripStore } from '../../store/trip-store';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
 export default function SignupScreen() {
   const router = useRouter();
+  const { fetchData } = useTripStore();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,11 +18,41 @@ export default function SignupScreen() {
   const [error, setError] = useState('');
 
   const handleSignup = async () => {
+    if (!email || !password || !name) { setError('Please fill in all fields'); return; }
     if (password !== confirm) { setError('Passwords do not match'); return; }
+    
     setError('');
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.replace('/(tabs)');
+    
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: name } },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      // Insert user row into public.users (the schema has no auto-trigger)
+      if (data.user) {
+        await supabase.from('users').upsert({
+          id: data.user.id,
+          email: data.user.email || email,
+          display_name: name,
+        });
+      }
+
+      await fetchData();
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
