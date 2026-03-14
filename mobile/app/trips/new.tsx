@@ -46,7 +46,7 @@ export default function NewTripScreen() {
     setLoading(false);
 
     if (data) {
-      router.back();
+      router.replace('/(tabs)');
     } else {
       setError('Failed to create trip');
     }

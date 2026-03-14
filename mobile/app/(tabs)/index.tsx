@@ -29,10 +29,10 @@ export default function DashboardScreen() {
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={s.topBar}>
           <View>
-            <Text style={s.greeting}>Hello, {user.display_name}</Text>
+            <Text style={s.greeting}>Hello, {user?.display_name || 'Traveler'}</Text>
             <Text style={s.sub}>Good {getHour()}</Text>
           </View>
-          <View style={s.avatar}><Text style={s.avatarText}>{user.display_name.charAt(0).toUpperCase()}</Text></View>
+          <View style={s.avatar}><Text style={s.avatarText}>{(user?.display_name || 'T').charAt(0).toUpperCase()}</Text></View>
         </View>
 
         <View style={s.searchWrap}>
