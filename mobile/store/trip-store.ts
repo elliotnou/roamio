@@ -26,15 +26,24 @@ interface TripStore {
 }
 
 async function ensureUserProfile(sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, any> }) {
+  console.log('ensureUserProfile: ensuring user exists for', sessionUser.id);
   const payload = {
     id: sessionUser.id,
     email: sessionUser.email || '',
     display_name: sessionUser.user_metadata?.display_name || null,
   };
 
-  const { error } = await supabase.from('users').upsert(payload, { onConflict: 'id' });
-  if (error) {
-    throw new Error(`Failed to ensure user profile: ${error.message}`);
+  try {
+    const { error } = await supabase.from('users').upsert(payload, { onConflict: 'id' }).select();
+    if (error) {
+      console.error('ensureUserProfile: failed to upsert user profile:', error.message);
+      // We don't throw here because if RLS fails (e.g. they already exist but can't update),
+      // we don't want to completely block login.
+    } else {
+      console.log('ensureUserProfile: user profile ensured.');
+    }
+  } catch (err) {
+    console.error('ensureUserProfile: exception caught:', err);
   }
 }
 
