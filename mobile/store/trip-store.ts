@@ -53,33 +53,44 @@ export const useTripStore = create<TripStore>((set, get) => ({
   fetchData: async () => {
     set({ isLoading: true });
     try {
+      console.log('fetchData: getting session...');
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { set({ isLoading: false }); return; }
+      if (!session) { 
+        console.log('fetchData: no session, exiting.');
+        set({ isLoading: false }); return; 
+      }
 
       const userId = session.user.id;
       await ensureUserProfile(session.user);
-
+      
+      console.log('fetchData: session found API: ', userId);
       set({ user: { id: userId, email: session.user.email || '', display_name: session.user.user_metadata?.display_name || '', created_at: new Date().toISOString() } });
 
+      console.log('fetchData: fetching trips...');
       const { data: trips, error: tripsError } = await supabase.from('trips').select('*').eq('user_id', userId).order('start_date', { ascending: true });
       if (tripsError) {
+        console.error('fetchData: trips query error:', tripsError);
         throw new Error(`Failed to fetch trips: ${tripsError.message}`);
       }
-      const safeTrips = trips || [];
       
+      const safeTrips = trips || [];
       const tripIds = safeTrips.map(t => t.id);
       
       let blocks: any[] = [];
       if (tripIds.length > 0) {
+        console.log('fetchData: fetching blocks...');
         const { data, error: blocksError } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
         if (blocksError) {
+          console.error('fetchData: blocks query error:', blocksError);
           throw new Error(`Failed to fetch activity blocks: ${blocksError.message}`);
         }
         if (data) blocks = data;
       }
 
+      console.log('fetchData: fetching checkins...');
       const { data: checkIns, error: checkInsError } = await supabase.from('check_ins').select('*').eq('user_id', userId);
       if (checkInsError) {
+        console.error('fetchData: check_ins query error:', checkInsError);
         throw new Error(`Failed to fetch check-ins: ${checkInsError.message}`);
       }
 
@@ -91,14 +102,16 @@ export const useTripStore = create<TripStore>((set, get) => ({
         blocksMap[b.trip_id].push(b);
       });
 
+      console.log('fetchData: updating state');
       set({
         trips: safeTrips,
         activeTrip: safeTrips.length > 0 ? safeTrips[0] : null,
         activityBlocks: blocksMap,
         checkIns: checkIns || [],
       });
+      console.log('fetchData: success!');
     } catch (e) {
-      console.error('Error fetching data:', e);
+      console.error('fetchData: Error in fetchData exception:', e);
     } finally {
       set({ isLoading: false });
     }
