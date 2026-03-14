@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Modal, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useTripStore } from '../../store/trip-store';
-import { fetchPlaceAutocomplete, PlaceAutocompleteItem } from '../../lib/places';
+import { fetchPlaceAutocomplete, fetchPlacePrimaryPhotoUrl, PlaceAutocompleteItem } from '../../lib/places';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 
@@ -24,15 +25,28 @@ function toISODate(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
+function toDateOnly(date: Date): Date {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
 export default function NewTripScreen() {
   const router = useRouter();
   const { addTrip, user } = useTripStore();
+  const today = toDateOnly(new Date());
   const destinationInputRef = useRef<TextInput>(null);
   const autocompleteRequestRef = useRef(0);
   const [destination, setDestination] = useState('');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [startDate, setStartDate] = useState<Date>(today);
+  const [endDate, setEndDate] = useState<Date>(today);
   const [selectedVibes, setSelectedVibes] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -95,9 +109,29 @@ export default function NewTripScreen() {
     });
   };
 
+  const handleDateChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (event.type === 'dismissed' || !date || !showPicker) {
+      setShowPicker(null);
+      return;
+    }
+
+    const picked = toDateOnly(date);
+
+    if (showPicker === 'start') {
+      setStartDate(picked);
+      if (endDate <= picked) {
+        setEndDate(addDays(picked, 0));
+      }
+    } else {
+      setEndDate(picked);
+    }
+
+    setShowPicker(null);
+  };
+
   const handleCreate = async () => {
-    if (!destination || !startDate || !endDate) {
-      setError('All fields are required');
+    if (!destination) {
+      setError('Destination is required');
       return;
     }
     if (endDate < startDate) {
@@ -125,12 +159,22 @@ export default function NewTripScreen() {
     setError('');
     setLoading(true);
 
+    let destinationImage: string | null = null;
+    if (selectedPlaceId) {
+      try {
+        destinationImage = await fetchPlacePrimaryPhotoUrl(selectedPlaceId);
+      } catch {
+        destinationImage = null;
+      }
+    }
+
     const trip = await addTrip({
       user_id: user?.id || '',
       destination,
       start_date: toISODate(startDate),
       end_date: toISODate(endDate),
       travel_vibes: Array.from(selectedVibes),
+      destination_image: destinationImage ?? undefined,
     });
 
     setLoading(false);
@@ -199,21 +243,30 @@ export default function NewTripScreen() {
                 <Text style={s.label}>Start</Text>
                 <Pressable style={s.dateBtn} onPress={() => setShowPicker('start')}>
                   <Feather name="calendar" size={14} color={C.sage} />
-                  <Text style={[s.dateBtnText, !startDate && { color: C.placeholder }]}>
-                    {startDate ? formatDisplayDate(startDate) : 'Pick date'}
-                  </Text>
+                  <Text style={s.dateBtnText}>{formatDisplayDate(startDate)}</Text>
                 </Pressable>
               </View>
               <View style={[s.field, { flex: 1 }]}>
                 <Text style={s.label}>End</Text>
                 <Pressable style={s.dateBtn} onPress={() => setShowPicker('end')}>
                   <Feather name="calendar" size={14} color={C.sage} />
-                  <Text style={[s.dateBtnText, !endDate && { color: C.placeholder }]}>
-                    {endDate ? formatDisplayDate(endDate) : 'Pick date'}
-                  </Text>
+                  <Text style={s.dateBtnText}>{formatDisplayDate(endDate)}</Text>
                 </Pressable>
               </View>
             </View>
+
+            {showPicker !== null && (
+              <View style={s.pickerContainer}>
+                <DateTimePicker
+                  value={showPicker === 'start' ? startDate : endDate}
+                  mode="date"
+                  display="default"
+                  minimumDate={showPicker === 'end' ? startDate : today}
+                  onChange={handleDateChange}
+                  textColor={C.fg}
+                />
+              </View>
+            )}
 
             <View style={s.field}>
               <Text style={s.label}>Travel vibe</Text>
@@ -254,39 +307,6 @@ export default function NewTripScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Date Picker Modal */}
-      <Modal visible={showPicker !== null} transparent animationType="slide">
-        <View style={s.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowPicker(null)} />
-          <View style={s.modalSheet}>
-            <View style={s.modalHandle} />
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>
-                {showPicker === 'start' ? 'Start Date' : 'End Date'}
-              </Text>
-              <Pressable onPress={() => setShowPicker(null)}>
-                <Text style={s.modalDone}>Done</Text>
-              </Pressable>
-            </View>
-            <DateTimePicker
-              value={
-                showPicker === 'start'
-                  ? (startDate ?? new Date())
-                  : (endDate ?? startDate ?? new Date())
-              }
-              mode="date"
-              display="spinner"
-              minimumDate={showPicker === 'end' && startDate ? startDate : new Date()}
-              onChange={(_, date) => {
-                if (!date) return;
-                if (showPicker === 'start') setStartDate(date);
-                else setEndDate(date);
-              }}
-              textColor={C.fg}
-            />
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -323,6 +343,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 14,
   },
   dateBtnText: { fontSize: 13, fontFamily: F.medium, color: C.fg },
+  pickerContainer: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 16,
+    marginTop: -6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
   vibeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   vibeCard: {
     width: '47%', backgroundColor: C.white, borderRadius: 16, padding: 16,
@@ -341,10 +370,4 @@ const s = StyleSheet.create({
     shadowColor: C.charcoal, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 12,
   },
   createBtnText: { color: C.white, fontSize: 16, fontFamily: F.bold },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' },
-  modalSheet: { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
-  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginTop: 12 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
-  modalTitle: { fontSize: 16, fontFamily: F.bold, color: C.fg },
-  modalDone: { fontSize: 16, fontFamily: F.semiBold, color: C.sage },
 });

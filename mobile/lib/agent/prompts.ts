@@ -8,6 +8,7 @@ import type {
   PlaceResolverInput,
   IntentClassifierInput,
   AlternativeRankerInput,
+  ScheduleSlotInput,
 } from './types';
 
 const ACTIVITY_TYPES: AgentActivityType[] = [
@@ -78,24 +79,80 @@ export function buildAlternativeRankerPrompt(input: AlternativeRankerInput): str
     )
     .join('\n');
 
-  return `You are a wellness travel assistant. A traveller with low energy needs alternative activities. Rank 3 to 5 alternatives from the candidate list below.
+  const vibesStr = input.travel_vibes.length > 0
+    ? input.travel_vibes.join(', ')
+    : 'not specified';
 
-Rules:
-- You MUST only use place_ids that appear in the candidate list. Never invent locations.
-- Prefer candidates with lower estimated_energy that still match the traveller's interests.
-- Consider distance (closer is better), rating (higher is better), and variety.
-- Each suggestion needs: "place_id", "name", "activity_type", "estimated_energy", "rank" (1 = best fit), and "reason" (one-line explanation).
-- Return between 3 and 5 suggestions ordered by rank.
+  const remainingStr = input.remaining_activities.length > 0
+    ? input.remaining_activities
+        .map((a) => `  - "${a.place_name}" at ${a.start_time} (energy ${a.energy_cost_estimate}/10)`)
+        .join('\n')
+    : '  (none — rest of day is free)';
+
+  const windowStr = input.available_window_minutes > 0
+    ? `${input.available_window_minutes} minutes`
+    : 'unknown';
+
+  return `You are a wellness travel assistant. A traveller feels low-energy and needs gentler alternative activities. Rank 3–5 options from the candidate list that best fit their energy, mood, and available time.
 
 Traveller context:
+- Destination: ${input.destination}
+- Trip vibes: ${vibesStr}
+- Current energy: ${input.energy_level}/10 (gap from ideal: ${input.energy_gap})
 - Original activity type: ${input.current_activity_type}
-- Current energy: ${input.energy_level}/10
-- Energy gap: ${input.energy_gap}
-- Time remaining: ${input.time_remaining_minutes} minutes
-- Trip destination: ${input.destination}
+- Available time window: ${windowStr}
+- Remaining schedule today:
+${remainingStr}
+
+Ranking rules:
+- ONLY use place_ids from the candidate list. Never invent locations.
+- Prioritise low energy cost (≤ ${Math.min(input.energy_level + 1, 5)}/10 preferred).
+- Match the trip vibes: e.g. if vibes include "relaxing", prefer parks/cafes/spas over busy markets.
+- If the window is short (< 60 min), prefer nearby, brief activities.
+- Each suggestion needs: "place_id", "name", "activity_type", "estimated_energy" (1–10), "rank" (1 = best), "reason" (one sentence mentioning vibe/energy/time fit).
+- Return 3–5 suggestions ordered by rank.
 
 Available candidates:
 ${candidateList}
 
-Respond ONLY with a valid JSON object with a single key "suggestions" containing an array of suggestion objects. No markdown fences, no extra text.`;
+Respond ONLY with a valid JSON object: {"suggestions": [...]}. No markdown fences, no extra text.`;
+}
+
+// ─── Schedule Slot Prompt ───
+
+export function buildScheduleSlotPrompt(input: ScheduleSlotInput): string {
+  const scheduleStr = input.day_activities.length > 0
+    ? input.day_activities
+        .map((a) => `  - "${a.place_name}": ${a.start_time} → ${a.end_time}`)
+        .join('\n')
+    : '  (no other activities)';
+
+  const windowEnd = input.next_block_start_time
+    ? `must end by ${input.next_block_start_time} (next commitment)`
+    : 'no hard deadline — rest of day is free';
+
+  const energyNote = input.energy_level <= 3
+    ? 'User is very tired — give them a 20–30 minute rest gap before starting.'
+    : input.energy_level <= 5
+    ? 'User is a bit tired — give them a 10–15 minute buffer before starting.'
+    : 'User has decent energy — a 5–10 minute transition gap is enough.';
+
+  return `You are a travel scheduler. Place a new activity into the traveller's day at the optimal time.
+
+Activity: "${input.activity_name}" (estimated ${input.estimated_duration_minutes} minutes)
+Earliest start: ${input.current_block_end_time} (previous block just ended)
+Window constraint: ${windowEnd}
+Energy level: ${input.energy_level}/10 — ${energyNote}
+
+Today's existing schedule:
+${scheduleStr}
+
+Rules:
+- Start no earlier than ${input.current_block_end_time}.
+- Respect the window constraint above.
+- Apply the appropriate rest gap based on energy level.
+- If the estimated duration doesn't fit, shorten it to fit (minimum 20 minutes).
+- Output times in HH:MM 24-hour format.
+
+Respond ONLY with JSON: {"start_time": "HH:MM", "end_time": "HH:MM", "reasoning": "one sentence"}. No markdown fences.`;
 }
