@@ -16,6 +16,12 @@ import type { ActivityType } from '../../../types';
 
 function parseTime(s: string): Date | null {
   if (!s) return null;
+  if (/^\d{2}:\d{2}/.test(s) && !s.includes('T')) {
+    const [h, m] = s.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h ?? 0, m ?? 0, 0, 0);
+    return d;
+  }
   try { const d = new Date(s); return isNaN(d.getTime()) ? null : d; } catch { return null; }
 }
 

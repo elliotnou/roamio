@@ -341,8 +341,9 @@ export const useTripStore = create<TripStore>((set, get) => ({
     const trip = get().trips.find((item) => item.id === block.trip_id);
 
     // ─── Step 1: Gemini place resolution + Google Places lookup ───
+    // Skip if resolved_place_id already known (e.g. when inserting from suggestions)
     let resolvedBlock = { ...block };
-    if (trip && block.place_name) {
+    if (trip && block.place_name && !block.resolved_place_id) {
       try {
         const resolved = await resolvePlace({
           place_name: block.place_name,
@@ -381,27 +382,24 @@ export const useTripStore = create<TripStore>((set, get) => ({
       return normalized;
     } catch (backendError) {
       console.warn('Backend activity creation failed, falling back to direct Supabase:', backendError);
-      try {
-        const { data, error } = await supabase
-          .from('activity_blocks')
-          .insert([resolvedBlock])
-          .select()
-          .single();
-        if (data && !error) {
-          const normalized = normalizeActivityBlock(data);
-          set((state) => {
-            const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
-            return {
-              activityBlocks: {
-                ...state.activityBlocks,
-                [resolvedBlock.trip_id]: [...existing, normalized],
-              },
-            };
-          });
-          return normalized;
-        }
-      } catch (fallbackError) {
-        console.error('Direct Supabase activity creation failed:', fallbackError);
+      const { data, error } = await supabase
+        .from('activity_blocks')
+        .insert([resolvedBlock])
+        .select()
+        .single();
+      if (error) throw new Error(`Supabase insert failed: ${error.message} (code: ${error.code})`);
+      if (data) {
+        const normalized = normalizeActivityBlock(data);
+        set((state) => {
+          const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
+          return {
+            activityBlocks: {
+              ...state.activityBlocks,
+              [resolvedBlock.trip_id]: [...existing, normalized],
+            },
+          };
+        });
+        return normalized;
       }
       return null;
     }
@@ -590,13 +588,34 @@ export const useTripStore = create<TripStore>((set, get) => ({
         Math.round((blockEnd.getTime() - now.getTime()) / 60000)
       );
 
+      // Find next block to compute available window
+      const sortedRemaining = [...remainingBlocks].sort((a, b) =>
+        a.start_time.localeCompare(b.start_time)
+      );
+      const nextBlock = sortedRemaining[0] ?? null;
+      const blockEndHHMM = normalizeTime(activityBlock.end_time);
+      const nextStartHHMM = nextBlock ? normalizeTime(nextBlock.start_time) : null;
+      let available_window_minutes = 0;
+      if (nextStartHHMM) {
+        const [nh, nm] = nextStartHHMM.split(':').map(Number);
+        const [eh, em] = blockEndHHMM.split(':').map(Number);
+        available_window_minutes = Math.max(0, ((nh ?? 0) * 60 + (nm ?? 0)) - ((eh ?? 0) * 60 + (em ?? 0)));
+      }
+
       const rankerResult = await rankAlternatives({
-        current_activity_type: 'other',
+        current_activity_type: activityBlock.activity_type as any ?? 'other',
         energy_level: energyLevel,
         energy_gap: classifierResult.energy_gap,
         time_remaining_minutes: timeRemainingMinutes,
         destination: trip?.destination || '',
         candidates,
+        travel_vibes: trip?.travel_vibes ?? [],
+        available_window_minutes,
+        remaining_activities: remainingBlocks.map((b) => ({
+          place_name: b.place_name,
+          start_time: b.start_time,
+          energy_cost_estimate: b.energy_cost_estimate ?? 5,
+        })),
       });
 
       // Convert ranked suggestions to ActivitySuggestion format
@@ -673,5 +692,6 @@ export const useTripStore = create<TripStore>((set, get) => ({
       }
       set({ suggestions: [], latestCheckInId: null });
     }
+
   },
 }));

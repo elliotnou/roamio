@@ -9,6 +9,7 @@ import type {
   PlaceResolverOutput,
   IntentClassifierOutput,
   AlternativeRankerOutput,
+  ScheduleSlotOutput,
 } from './types';
 
 const VALID_ACTIVITY_TYPES = new Set<string>([
@@ -161,4 +162,32 @@ export function validateAlternativeRankerOutput(
   });
 
   return { suggestions: validated };
+}
+
+const HH_MM = /^\d{2}:\d{2}$/;
+
+export function validateScheduleSlotOutput(data: unknown): ScheduleSlotOutput {
+  if (typeof data !== 'object' || data === null) {
+    throw new Error('Validation: ScheduleSlotOutput must be an object');
+  }
+  const obj = data as Record<string, unknown>;
+
+  if (typeof obj.start_time !== 'string' || !HH_MM.test(obj.start_time)) {
+    throw new Error(`Validation: "start_time" must be HH:MM, got "${obj.start_time}"`);
+  }
+  if (typeof obj.end_time !== 'string' || !HH_MM.test(obj.end_time)) {
+    throw new Error(`Validation: "end_time" must be HH:MM, got "${obj.end_time}"`);
+  }
+  assertString(obj.reasoning, 'reasoning');
+
+  // Sanity: end must be after start
+  if (obj.end_time <= obj.start_time) {
+    throw new Error(`Validation: end_time "${obj.end_time}" must be after start_time "${obj.start_time}"`);
+  }
+
+  return {
+    start_time: obj.start_time as string,
+    end_time: obj.end_time as string,
+    reasoning: obj.reasoning as string,
+  };
 }
