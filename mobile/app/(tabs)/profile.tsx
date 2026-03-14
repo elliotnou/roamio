@@ -15,7 +15,7 @@ const menuItems: { icon: React.ComponentProps<typeof Feather>['name']; label: st
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user } = useTripStore();
+  const { user, trips, activityBlocks, checkIns } = useTripStore();
   
   // Guard against null user states during transitions
   if (!user) return null;
@@ -37,7 +37,7 @@ export default function ProfileScreen() {
           <Text style={s.email}>{user.email}</Text>
         </View>
         <View style={s.statsRow}>
-          {[{ label: 'Trips', value: '2' }, { label: 'Activities', value: '9' }, { label: 'Check-ins', value: '2' }].map(({ label, value }) => (
+          {[{ label: 'Trips', value: String(trips.length) }, { label: 'Activities', value: String(Object.values(activityBlocks).flat().length) }, { label: 'Check-ins', value: String(checkIns.length) }].map(({ label, value }) => (
             <View key={label} style={s.stat}>
               <Text style={s.statNum}>{value}</Text>
               <Text style={s.statLabel}>{label}</Text>
