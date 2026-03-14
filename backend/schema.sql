@@ -11,6 +11,8 @@ create table public.trips (
   destination text not null,
   start_date date not null,
   end_date date not null,
+  travel_vibes text[] default '{}',
+  destination_image text,
   created_at timestamptz default now()
 );
 
