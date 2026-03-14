@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import type { User, Trip, ActivityBlock, CheckIn, ActivitySuggestion } from '../types';
+import type {
+  User,
+  Trip,
+  ActivityBlock,
+  CheckIn,
+  ActivitySuggestion,
+  ActivityType,
+  AgentActivityType,
+} from '../types';
+import type { NearbyPlaceCandidate } from '../types';
 import { supabase } from '../lib/supabase';
 import {
   createActivityBlockViaBackend,
@@ -7,6 +16,10 @@ import {
   requestSuggestionsFromBackend,
   updateCheckInOutcomeViaBackend,
 } from '../lib/backend';
+import { resolvePlace } from '../lib/agent/resolve';
+import { classifyCheckIn } from '../lib/agent/classifier';
+import { rankAlternatives } from '../lib/agent/ranker';
+import { fetchNearbyPlaces } from '../lib/places';
 
 function normalizeTime(value: string): string {
   if (!value) return value;
@@ -45,6 +58,34 @@ function mapSuggestion(suggestion: any): ActivitySuggestion {
         : 0,
     image_url: suggestion.image_url,
   };
+}
+
+function mapAgentTypeToActivityType(type: AgentActivityType): ActivityType {
+  switch (type) {
+    case 'walking_tour':
+      return 'walking';
+    case 'dining':
+      return 'restaurant';
+    case 'spa_wellness':
+      return 'spa';
+    case 'sightseeing':
+      return 'landmark';
+    case 'relaxation':
+      return 'park';
+    default:
+      if (
+        type === 'hiking' ||
+        type === 'museum' ||
+        type === 'shopping' ||
+        type === 'beach' ||
+        type === 'park' ||
+        type === 'cycling' ||
+        type === 'other'
+      ) {
+        return type;
+      }
+      return 'other';
+  }
 }
 
 interface CheckInFlowResult {
@@ -194,16 +235,41 @@ export const useTripStore = create<TripStore>((set, get) => ({
   addActivityBlock: async (block) => {
     const trip = get().trips.find((item) => item.id === block.trip_id);
 
+    // ─── Step 1: Gemini place resolution + Google Places lookup ───
+    let resolvedBlock = { ...block };
+    if (trip && block.place_name) {
+      try {
+        const resolved = await resolvePlace({
+          place_name: block.place_name,
+          destination: trip.destination,
+        });
+
+        resolvedBlock = {
+          ...resolvedBlock,
+          resolved_place_id: resolved.resolved_place_id,
+          resolved_place_name: resolved.resolved_place_name,
+          resolved_lat: resolved.resolved_lat,
+          resolved_lng: resolved.resolved_lng,
+          activity_type: mapAgentTypeToActivityType(resolved.activity_type),
+          // Override with Gemini's classification if not already set meaningfully
+          energy_cost_estimate: resolved.energy_cost_estimate,
+        };
+      } catch (resolveErr) {
+        console.warn('[addActivityBlock] Place resolution failed, continuing without:', resolveErr);
+      }
+    }
+
+    // ─── Step 2: Persist via backend (falls back to direct Supabase) ───
     try {
       if (!trip) throw new Error('Trip not found for new activity block');
-      const { activity_block } = await createActivityBlockViaBackend(block.trip_id, block);
+      const { activity_block } = await createActivityBlockViaBackend(resolvedBlock.trip_id, resolvedBlock);
       const normalized = normalizeActivityBlock(activity_block);
       set((state) => {
-        const existing = state.activityBlocks[block.trip_id] || [];
+        const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
         return {
           activityBlocks: {
             ...state.activityBlocks,
-            [block.trip_id]: [...existing, normalized],
+            [resolvedBlock.trip_id]: [...existing, normalized],
           },
         };
       });
@@ -211,15 +277,19 @@ export const useTripStore = create<TripStore>((set, get) => ({
     } catch (backendError) {
       console.warn('Backend activity creation failed, falling back to direct Supabase:', backendError);
       try {
-        const { data, error } = await supabase.from('activity_blocks').insert([block]).select().single();
+        const { data, error } = await supabase
+          .from('activity_blocks')
+          .insert([resolvedBlock])
+          .select()
+          .single();
         if (data && !error) {
           const normalized = normalizeActivityBlock(data);
           set((state) => {
-            const existing = state.activityBlocks[block.trip_id] || [];
+            const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
             return {
               activityBlocks: {
                 ...state.activityBlocks,
-                [block.trip_id]: [...existing, normalized],
+                [resolvedBlock.trip_id]: [...existing, normalized],
               },
             };
           });
@@ -241,6 +311,8 @@ export const useTripStore = create<TripStore>((set, get) => ({
       places_available: false,
     };
 
+    // ─── Step 1: Create check-in record ───
+    let checkInId: string | null = null;
     try {
       const { check_in } = await createCheckInViaBackend({
         activity_block_id: activityBlock.id,
@@ -257,28 +329,198 @@ export const useTripStore = create<TripStore>((set, get) => ({
         energyLevel: null,
         latestCheckInId: check_in.id,
       }));
+      checkInId = check_in.id;
+    } catch (checkInErr) {
+      console.warn('[startCheckIn] Backend check-in creation failed, trying direct Supabase:', checkInErr);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session) {
+          const { data: ci } = await supabase
+            .from('check_ins')
+            .insert([{
+              activity_block_id: activityBlock.id,
+              user_id: session.user.id,
+              energy_level: energyLevel,
+              current_lat: currentLat,
+              current_lng: currentLng,
+              agent_outcome: energyLevel >= 7 ? 'affirmed' : null,
+              selected_place_id: null,
+              selected_place_name: null,
+            }])
+            .select()
+            .single();
+          if (ci) {
+            set((state) => ({
+              checkIns: [ci as CheckIn, ...state.checkIns],
+              energyLevel: null,
+              latestCheckInId: ci.id,
+            }));
+            checkInId = ci.id;
+          }
+        }
+      } catch (directErr) {
+        console.error('[startCheckIn] Direct check-in creation also failed:', directErr);
+      }
+    }
 
-      const suggestionResponse = await requestSuggestionsFromBackend({
-        activity_block_id: activityBlock.id,
-        trip_id: activityBlock.trip_id,
+    // ─── Step 2: Run Gemini classifier ───
+    const { trips, activityBlocks, checkIns } = get();
+    const trip = trips.find((t) => t.id === activityBlock.trip_id);
+
+    // Gather today's remaining blocks for context
+    const allTripBlocks = activityBlocks[activityBlock.trip_id] || [];
+    const remainingBlocks = allTripBlocks.filter(
+      (b) =>
+        b.id !== activityBlock.id &&
+        b.start_time > activityBlock.start_time
+    );
+
+    const priorCheckins = checkIns.map((c) => ({
+      activity_block_id: c.activity_block_id,
+      energy_level: c.energy_level,
+      timestamp: c.timestamp,
+    }));
+
+    let classifierResult;
+    try {
+      classifierResult = await classifyCheckIn({
         energy_level: energyLevel,
-        current_lat: currentLat,
-        current_lng: currentLng,
         current_time: new Date().toISOString(),
+        current_block: {
+          id: activityBlock.id,
+          place_name: activityBlock.place_name,
+          resolved_place_id: activityBlock.resolved_place_id,
+          start_time: activityBlock.start_time,
+          end_time: activityBlock.end_time,
+        },
+        remaining_blocks_today: remainingBlocks.map((b) => ({
+          id: b.id,
+          place_name: b.place_name,
+          resolved_place_id: b.resolved_place_id,
+          start_time: b.start_time,
+          end_time: b.end_time,
+        })),
+        prior_checkins_this_trip: priorCheckins,
+      });
+    } catch (classifyErr) {
+      console.warn('[startCheckIn] Classifier failed, using energy threshold:', classifyErr);
+      classifierResult = {
+        needs_rerouting: energyLevel <= 6,
+        energy_gap: Math.max(0, 7 - energyLevel),
+        affirmation_message: energyLevel >= 7 ? "You're doing great — enjoy your activity!" : null,
+        reasoning: `Energy level ${energyLevel}/10`,
+      };
+    }
+
+    // High energy — return affirmation
+    if (!classifierResult.needs_rerouting) {
+      return {
+        needs_rerouting: false,
+        affirmation_message: classifierResult.affirmation_message,
+        reasoning: classifierResult.reasoning,
+        suggestions: [],
+        places_available: false,
+      };
+    }
+
+    // ─── Step 3: Fetch nearby places + run ranker ───
+    try {
+      // First try backend suggestions endpoint
+      try {
+        const suggestionResponse = await requestSuggestionsFromBackend({
+          activity_block_id: activityBlock.id,
+          trip_id: activityBlock.trip_id,
+          energy_level: energyLevel,
+          current_lat: currentLat,
+          current_lng: currentLng,
+          current_time: new Date().toISOString(),
+        });
+
+        const suggestions = (suggestionResponse.suggestions || []).map(mapSuggestion);
+        if (suggestions.length > 0) {
+          set({ suggestions });
+          return {
+            needs_rerouting: suggestionResponse.needs_rerouting,
+            affirmation_message: suggestionResponse.affirmation_message,
+            reasoning: suggestionResponse.reasoning,
+            suggestions,
+            places_available: !!suggestionResponse._places_available,
+          };
+        }
+
+        // If backend is reachable but has no candidates yet, continue to mobile fallback.
+        console.warn('[startCheckIn] Backend returned no suggestions, falling back to mobile ranker path');
+      } catch (backendSuggestErr) {
+        console.warn('[startCheckIn] Backend suggestions failed, running mobile Gemini ranker:', backendSuggestErr);
+      }
+
+      // Fallback: fetch nearby places + run Gemini ranker directly on mobile
+      const nearbyPlaces = await fetchNearbyPlaces(currentLat, currentLng);
+      const candidates: NearbyPlaceCandidate[] = nearbyPlaces.map((p) => ({
+        place_id: p.placeId,
+        name: p.name,
+        activity_type: 'other' as const,
+        estimated_energy: 3, // Low energy default for alternatives
+        distance_meters: p.distanceMeters,
+        rating: p.rating,
+      }));
+
+      if (candidates.length === 0) {
+        return {
+          needs_rerouting: true,
+          affirmation_message: null,
+          reasoning: classifierResult.reasoning,
+          suggestions: [],
+          places_available: false,
+        };
+      }
+
+      // Calculate time remaining in current block
+      const now = new Date();
+      const blockEnd = new Date(activityBlock.end_time);
+      const timeRemainingMinutes = Math.max(
+        0,
+        Math.round((blockEnd.getTime() - now.getTime()) / 60000)
+      );
+
+      const rankerResult = await rankAlternatives({
+        current_activity_type: 'other',
+        energy_level: energyLevel,
+        energy_gap: classifierResult.energy_gap,
+        time_remaining_minutes: timeRemainingMinutes,
+        destination: trip?.destination || '',
+        candidates,
       });
 
-      const suggestions = (suggestionResponse.suggestions || []).map(mapSuggestion);
+      // Convert ranked suggestions to ActivitySuggestion format
+      const suggestions: ActivitySuggestion[] = rankerResult.suggestions.map((s) => {
+        const nearbyMatch = nearbyPlaces.find((p) => p.placeId === s.place_id);
+        return {
+          place_id: s.place_id,
+          place_name: s.name,
+          address: nearbyMatch?.address || '',
+          maps_url: nearbyMatch?.mapsUrl || `https://maps.google.com/search/?api=1&query=${encodeURIComponent(s.name)}`,
+          energy_cost_label:
+            s.estimated_energy <= 3 ? 'very low' : s.estimated_energy <= 5 ? 'low' : 'moderate',
+          why_it_fits: s.reason,
+          distance_km: Math.round((nearbyMatch?.distanceMeters ?? 0) / 100) / 10,
+          estimated_duration_minutes: 60,
+        };
+      });
+
       set({ suggestions });
 
       return {
-        needs_rerouting: suggestionResponse.needs_rerouting,
-        affirmation_message: suggestionResponse.affirmation_message,
-        reasoning: suggestionResponse.reasoning,
+        needs_rerouting: true,
+        affirmation_message: null,
+        reasoning: classifierResult.reasoning,
         suggestions,
-        places_available: !!suggestionResponse._places_available,
+        places_available: true,
       };
     } catch (error) {
-      console.error('Check-in flow failed:', error);
+      console.error('[startCheckIn] Full check-in flow error:', error);
       set({ suggestions: [] });
       return defaultFailure;
     }
@@ -303,8 +545,27 @@ export const useTripStore = create<TripStore>((set, get) => ({
         suggestions: [],
         latestCheckInId: null,
       }));
-    } catch (error) {
-      console.error('Failed to update suggestion outcome:', error);
+    } catch (backendErr) {
+      console.warn('[updateSuggestionOutcome] Backend update failed, trying direct Supabase:', backendErr);
+      // Fallback: direct Supabase PATCH
+      try {
+        const { data } = await supabase
+          .from('check_ins')
+          .update({ agent_outcome, selected_place_id, selected_place_name })
+          .eq('id', latestCheckInId)
+          .select()
+          .single();
+
+        if (data) {
+          set((state) => ({
+            checkIns: state.checkIns.map((item) =>
+              item.id === latestCheckInId ? (data as CheckIn) : item
+            ),
+          }));
+        }
+      } catch (directErr) {
+        console.error('[updateSuggestionOutcome] Direct Supabase update failed:', directErr);
+      }
       set({ suggestions: [], latestCheckInId: null });
     }
   },

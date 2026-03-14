@@ -89,7 +89,7 @@ export default function SuggestionsScreen() {
             </View>
             <Text style={s.emptyTitle}>No nearby alternatives yet</Text>
             <Text style={s.emptyText}>
-              The AI classifier ran, but nearby place search still needs Task 3 before we can show real options here.
+              No nearby places were found. Check your location permissions and Google Maps API key, then try again.
             </Text>
           </View>
         ) : (

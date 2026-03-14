@@ -1,9 +1,38 @@
+// ─── Core App Types (aligned with backend/schema.sql) ───
+
+/**
+ * Activity type values used in the UI (itinerary.tsx type chips).
+ * These are the UI-layer activity types.
+ */
 export type ActivityType =
   | 'hiking' | 'walking' | 'cycling'
   | 'museum' | 'gallery' | 'landmark'
   | 'restaurant' | 'cafe'
   | 'shopping' | 'market'
   | 'spa' | 'park' | 'beach'
+  | 'other';
+
+/**
+ * Activity type values used by the Gemini agent layer.
+ * Re-exported here so UI code can reference them without
+ * importing from lib/agent/types directly.
+ */
+export type AgentActivityType =
+  | 'hiking'
+  | 'walking_tour'
+  | 'museum'
+  | 'shopping'
+  | 'dining'
+  | 'nightlife'
+  | 'spa_wellness'
+  | 'beach'
+  | 'park'
+  | 'sightseeing'
+  | 'adventure_sport'
+  | 'cultural_event'
+  | 'water_activity'
+  | 'cycling'
+  | 'relaxation'
   | 'other';
 
 export interface User {
@@ -62,4 +91,31 @@ export interface ActivitySuggestion {
   distance_km: number;
   estimated_duration_minutes: number;
   image_url?: string;
+}
+
+// ─── AI Contract Types (re-exported for convenience) ───
+
+export interface NearbyPlaceCandidate {
+  place_id: string;
+  name: string;
+  activity_type: AgentActivityType;
+  estimated_energy: number;
+  distance_meters: number;
+  rating: number | null;
+}
+
+export interface RankedSuggestion {
+  place_id: string;
+  name: string;
+  activity_type: AgentActivityType;
+  estimated_energy: number;
+  rank: number;
+  reason: string;
+}
+
+export interface IntentClassifierOutput {
+  needs_rerouting: boolean;
+  energy_gap: number;
+  affirmation_message: string | null;
+  reasoning: string;
 }
