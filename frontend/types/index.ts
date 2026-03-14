@@ -20,6 +20,7 @@ export interface Trip {
   start_date: string;
   end_date: string;
   created_at: string;
+  destination_image?: string;
 }
 
 export interface ActivityBlock {
@@ -59,4 +60,5 @@ export interface ActivitySuggestion {
   why_it_fits: string;
   distance_km: number;
   estimated_duration_minutes: number;
+  image_url?: string;
 }

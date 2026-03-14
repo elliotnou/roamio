@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #FAF8F5;
+  --foreground: #1A1A1A;
+  --sage: #8B9A7B;
+  --sage-dark: #6B7A5E;
+  --cream: #F7F4EF;
+  --charcoal: #2C2C2C;
+  --text-secondary: #6B6B6B;
 }
 
 body {
@@ -29,14 +34,14 @@ input[type='range']::-webkit-slider-thumb {
   height: 28px;
   border-radius: 50%;
   background: white;
-  border: 3px solid #6366f1;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  border: 3px solid #8B9A7B;
+  box-shadow: 0 2px 8px rgba(139, 154, 123, 0.4);
   cursor: pointer;
   transition: box-shadow 0.15s ease;
 }
 
 input[type='range']::-webkit-slider-thumb:hover {
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.6);
+  box-shadow: 0 2px 12px rgba(139, 154, 123, 0.6);
 }
 
 input[type='range']::-moz-range-thumb {
@@ -44,8 +49,8 @@ input[type='range']::-moz-range-thumb {
   height: 28px;
   border-radius: 50%;
   background: white;
-  border: 3px solid #6366f1;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  border: 3px solid #8B9A7B;
+  box-shadow: 0 2px 8px rgba(139, 154, 123, 0.4);
   cursor: pointer;
 }
 
@@ -56,4 +61,13 @@ input[type='range']::-moz-range-thumb {
 
 .pulse-dot {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

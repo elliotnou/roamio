@@ -23,30 +23,30 @@ export function formatTimeRange(start: string, end: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-export function getActivityEmoji(type: ActivityType): string {
+export function getActivityIcon(type: ActivityType): string {
   const map: Record<ActivityType, string> = {
-    hiking: '🏔️',
-    walking: '🚶',
-    cycling: '🚴',
-    museum: '🏛️',
-    gallery: '🖼️',
-    landmark: '🗺️',
-    restaurant: '🍽️',
-    cafe: '☕',
-    shopping: '🛍️',
-    market: '🧺',
-    spa: '🛁',
-    park: '🌳',
-    beach: '🏖️',
-    other: '📍',
+    hiking: 'Mountain',
+    walking: 'Footprints',
+    cycling: 'Bike',
+    museum: 'Landmark',
+    gallery: 'Image',
+    landmark: 'MapPin',
+    restaurant: 'UtensilsCrossed',
+    cafe: 'Coffee',
+    shopping: 'ShoppingBag',
+    market: 'Store',
+    spa: 'Droplets',
+    park: 'TreePine',
+    beach: 'Waves',
+    other: 'MapPin',
   };
-  return map[type] ?? '📍';
+  return map[type] ?? 'MapPin';
 }
 
 export function getEnergyColor(cost: number): string {
-  if (cost <= 3) return 'bg-emerald-100 text-emerald-700';
-  if (cost <= 6) return 'bg-amber-100 text-amber-700';
-  return 'bg-red-100 text-red-700';
+  if (cost <= 3) return 'bg-[#e8ede4] text-[#5a6b4e]';
+  if (cost <= 6) return 'bg-[#f5edd4] text-[#8a7340]';
+  return 'bg-[#f5ddd4] text-[#8a4a40]';
 }
 
 export function getEnergyLabel(cost: number): string {
@@ -64,6 +64,5 @@ export function isBlockActive(startTime: string, endTime: string, currentMinutes
 }
 
 // Hardcoded "current time" for demo: 15:45 (3:45pm) on day 0
-// Lands inside block-003 (Johnston Canyon Trail, 15:30–18:00) — high energy activity, no prior check-in
 export const DEMO_CURRENT_MINUTES = 15 * 60 + 45; // 945 minutes = 3:45pm
 export const DEMO_CURRENT_DAY = 0;

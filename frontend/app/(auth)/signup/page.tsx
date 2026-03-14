@@ -26,84 +26,66 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-violet-50 flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg mb-3">
-            <span className="text-2xl">✈️</span>
-          </div>
-          <h1 className="text-3xl font-black bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tracking-tight">
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold text-[#8B9A7B] tracking-tight">
             TripPulse
           </h1>
-          <p className="text-slate-500 mt-1.5 text-sm font-medium">Start your wellness journey today</p>
+          <p className="text-[#6B6B6B] mt-2 text-sm">Start your wellness journey</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-3xl shadow-xl shadow-indigo-100 border border-slate-100 p-8">
-          <h2 className="text-xl font-bold text-slate-800 mb-1">Create your account</h2>
-          <p className="text-slate-500 text-sm mb-6">Free forever for personal use</p>
-
+        {/* Form */}
+        <div className="space-y-4">
           {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            <div className="px-4 py-3 bg-[#f5ddd4] border border-[#e8c4b8] rounded-2xl text-[#8a4a40] text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleCreateAccount} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Display Name</label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Alex"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
-                required
-              />
-            </div>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Display name"
+              className="w-full px-5 py-3.5 rounded-2xl border border-[#E5E0D8] bg-white text-[#1A1A1A] placeholder-[#ADADAD] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
+              required
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex@example.com"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
-                required
-              />
-            </div>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              className="w-full px-5 py-3.5 rounded-2xl border border-[#E5E0D8] bg-white text-[#1A1A1A] placeholder-[#ADADAD] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
+              required
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
-                required
-                minLength={6}
-              />
-            </div>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full px-5 py-3.5 rounded-2xl border border-[#E5E0D8] bg-white text-[#1A1A1A] placeholder-[#ADADAD] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
+              required
+              minLength={6}
+            />
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirm Password</label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
-                required
-              />
-            </div>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm password"
+              className="w-full px-5 py-3.5 rounded-2xl border border-[#E5E0D8] bg-white text-[#1A1A1A] placeholder-[#ADADAD] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
+              required
+            />
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 hover:from-indigo-700 hover:to-violet-700 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+              className="w-full py-3.5 px-4 bg-[#2C2C2C] text-white font-semibold rounded-full shadow-sm hover:bg-[#1A1A1A] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -117,22 +99,16 @@ export default function SignupPage() {
                 'Create Account'
               )}
             </button>
-
-            <p className="text-xs text-slate-400 text-center">
-              By signing up you agree to our{' '}
-              <span className="text-indigo-500 cursor-pointer hover:underline">Terms</span> and{' '}
-              <span className="text-indigo-500 cursor-pointer hover:underline">Privacy Policy</span>
-            </p>
           </form>
+        </div>
 
-          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
-            <p className="text-slate-500 text-sm">
-              Already have an account?{' '}
-              <Link href="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors">
-                Sign in
-              </Link>
-            </p>
-          </div>
+        <div className="mt-8 text-center">
+          <p className="text-[#6B6B6B] text-sm">
+            Already have an account?{' '}
+            <Link href="/login" className="text-[#6B7A5E] font-semibold hover:text-[#5a6b4e] transition-colors">
+              Sign in
+            </Link>
+          </p>
         </div>
       </div>
     </div>

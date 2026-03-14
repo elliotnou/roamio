@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTripStore } from '@/store/trip-store';
 import { getDayCount } from '@/lib/utils';
-import { ArrowLeft, MapPin, Clock, Sparkles } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock } from 'lucide-react';
 import type { ActivityBlock } from '@/types';
 
 export default function ItineraryPage() {
@@ -57,32 +57,32 @@ export default function ItineraryPage() {
 
   if (!trip) {
     return (
-      <div className="max-w-md mx-auto px-4 py-6 text-center">
-        <p className="text-slate-500">Trip not found.</p>
-        <Link href="/trips" className="text-indigo-600 font-semibold">Back to Trips</Link>
+      <div className="max-w-md mx-auto px-5 py-6 text-center">
+        <p className="text-[#6B6B6B]">Trip not found.</p>
+        <Link href="/trips" className="text-[#8B9A7B] font-semibold">Back to Trips</Link>
       </div>
     );
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6">
+    <div className="max-w-md mx-auto px-5 py-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-8">
         <Link
           href={`/trips/${tripId}`}
-          className="w-9 h-9 flex items-center justify-center rounded-xl bg-white shadow-sm border border-slate-100 hover:bg-slate-50 transition-colors"
+          className="w-10 h-10 flex items-center justify-center rounded-full bg-white shadow-sm hover:shadow-md transition-all"
         >
-          <ArrowLeft size={18} className="text-slate-600" />
+          <ArrowLeft size={18} className="text-[#1A1A1A]" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Add Activity</h1>
-          <p className="text-slate-500 text-xs mt-0.5">{trip.destination}</p>
+          <h1 className="text-xl font-bold text-[#1A1A1A]">Add Activity</h1>
+          <p className="text-[#6B6B6B] text-xs mt-0.5">{trip.destination}</p>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+      <div className="bg-white rounded-3xl shadow-sm p-6">
         {error && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+          <div className="mb-4 px-4 py-3 bg-[#f5ddd4] border border-[#e8c4b8] rounded-2xl text-[#8a4a40] text-sm">
             {error}
           </div>
         )}
@@ -90,7 +90,7 @@ export default function ItineraryPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Day selector */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <label className="block text-sm font-semibold text-[#1A1A1A] mb-2">
               Which Day?
             </label>
             <div className="flex gap-2 flex-wrap">
@@ -99,10 +99,10 @@ export default function ItineraryPage() {
                   key={i}
                   type="button"
                   onClick={() => setDayIndex(i)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
                     dayIndex === i
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                      : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                      ? 'bg-[#2C2C2C] text-white'
+                      : 'bg-[#F0EDE7] text-[#6B6B6B] hover:bg-[#E5E0D8]'
                   }`}
                 >
                   Day {i + 1}
@@ -113,17 +113,17 @@ export default function ItineraryPage() {
 
           {/* Place name */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <label className="block text-sm font-semibold text-[#1A1A1A] mb-2">
               Place Name
             </label>
             <div className="relative">
-              <MapPin size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#ADADAD]" />
               <input
                 type="text"
                 value={placeName}
                 onChange={(e) => setPlaceName(e.target.value)}
                 placeholder="e.g. Banff Upper Hot Springs"
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+                className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-[#E5E0D8] bg-[#FAF8F5] text-[#1A1A1A] placeholder-[#ADADAD] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
                 required
               />
             </div>
@@ -132,32 +132,32 @@ export default function ItineraryPage() {
           {/* Time range */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <label className="block text-sm font-semibold text-[#1A1A1A] mb-2">
                 Start Time
               </label>
               <div className="relative">
-                <Clock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Clock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#ADADAD]" />
                 <input
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full pl-9 pr-3 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+                  className="w-full pl-10 pr-3 py-3.5 rounded-2xl border border-[#E5E0D8] bg-[#FAF8F5] text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <label className="block text-sm font-semibold text-[#1A1A1A] mb-2">
                 End Time
               </label>
               <div className="relative">
-                <Clock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Clock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#ADADAD]" />
                 <input
                   type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full pl-9 pr-3 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+                  className="w-full pl-10 pr-3 py-3.5 rounded-2xl border border-[#E5E0D8] bg-[#FAF8F5] text-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#8B9A7B]/40 focus:border-[#8B9A7B] transition-all text-sm"
                   required
                 />
               </div>
@@ -165,17 +165,16 @@ export default function ItineraryPage() {
           </div>
 
           {/* AI note */}
-          <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 flex gap-3">
-            <Sparkles size={18} className="text-violet-500 shrink-0 mt-0.5" />
-            <p className="text-violet-700 text-sm leading-relaxed">
-              Our AI will automatically classify this activity and estimate its energy demand — so TripPulse can adapt your day in real time.
+          <div className="bg-[#e8ede4] rounded-2xl p-4">
+            <p className="text-[#5a6b4e] text-sm leading-relaxed">
+              Our AI will automatically classify this activity and estimate its energy demand so TripPulse can adapt your day in real time.
             </p>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 hover:from-indigo-700 hover:to-violet-700 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full py-3.5 bg-[#2C2C2C] text-white font-semibold rounded-full shadow-sm hover:bg-[#1A1A1A] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">

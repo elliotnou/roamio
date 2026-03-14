@@ -15,6 +15,7 @@ export const MOCK_TRIPS: Trip[] = [
     start_date: '2026-03-14',
     end_date: '2026-03-16',
     created_at: '2026-03-01T10:00:00Z',
+    destination_image: 'https://images.unsplash.com/photo-1609198092458-38a293c7ac4b?w=800',
   },
   {
     id: 'trip-kyoto-002',
@@ -23,6 +24,7 @@ export const MOCK_TRIPS: Trip[] = [
     start_date: '2026-04-05',
     end_date: '2026-04-10',
     created_at: '2026-03-05T14:30:00Z',
+    destination_image: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800',
   },
 ];
 
@@ -227,6 +229,7 @@ export const MOCK_SUGGESTIONS: ActivitySuggestion[] = [
     why_it_fits: 'A cozy mountain cafe perfect for resting your legs with outstanding Rocky Mountain views.',
     distance_km: 0.8,
     estimated_duration_minutes: 45,
+    image_url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800',
   },
   {
     place_id: 'ChIJpark-central-002',
@@ -237,6 +240,7 @@ export const MOCK_SUGGESTIONS: ActivitySuggestion[] = [
     why_it_fits: 'A quiet green space by the Bow River where you can sit, breathe, and recharge naturally.',
     distance_km: 0.4,
     estimated_duration_minutes: 30,
+    image_url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
   },
   {
     place_id: 'ChIJgallery-003',
@@ -247,6 +251,7 @@ export const MOCK_SUGGESTIONS: ActivitySuggestion[] = [
     why_it_fits: 'Explore world-class contemporary art at your own leisurely pace in a serene indoor setting.',
     distance_km: 1.2,
     estimated_duration_minutes: 60,
+    image_url: 'https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800',
   },
   {
     place_id: 'ChIJlibrary-004',
@@ -257,5 +262,6 @@ export const MOCK_SUGGESTIONS: ActivitySuggestion[] = [
     why_it_fits: 'Curl up with a local history book in this peaceful library — ideal for a low-energy afternoon reset.',
     distance_km: 0.3,
     estimated_duration_minutes: 60,
+    image_url: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=800',
   },
 ];
