@@ -72,8 +72,6 @@ export async function fetchPlaceAutocomplete(query: string): Promise<PlaceAutoco
     }
 
     return results;
-<<<<<<< HEAD
-=======
 }
 
 export async function fetchPlacePrimaryPhotoUrl(placeId: string): Promise<string | null> {
@@ -104,7 +102,6 @@ export async function fetchPlacePrimaryPhotoUrl(placeId: string): Promise<string
     }
 
     return `https://places.googleapis.com/v1/${firstPhotoName}/media?maxWidthPx=1200&key=${encodeURIComponent(key)}`;
->>>>>>> d9ecba0c (merging)
 }
 
 // ─── Nearby Places (for check-in alternative suggestions) ───
