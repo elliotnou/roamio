@@ -46,7 +46,7 @@ export interface CheckIn {
   energy_level: number;
   current_lat: number;
   current_lng: number;
-  agent_outcome: 'affirmed' | 'rerouted' | 'dismissed';
+  agent_outcome: 'affirmed' | 'rerouted' | 'dismissed' | null;
   selected_place_id: string | null;
   selected_place_name: string | null;
   timestamp: string;

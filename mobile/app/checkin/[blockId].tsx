@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Dimensions, PanResponder, Animated }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useTripStore } from '../../store/trip-store';
 import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
@@ -34,10 +35,14 @@ function getEnergyIcon(level: number): React.ComponentProps<typeof Feather>['nam
 export default function CheckInScreen() {
   const router = useRouter();
   const { blockId } = useLocalSearchParams<{ blockId: string }>();
-  const { activityBlocks, submitCheckIn, user } = useTripStore();
+  const { activityBlocks, startCheckIn } = useTripStore();
 
   const [energyLevel, setEnergyLevel] = useState(5);
   const [submitted, setSubmitted] = useState(false);
+  const [affirmationMessage, setAffirmationMessage] = useState("You're all set.");
+  const [submitting, setSubmitting] = useState(false);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [error, setError] = useState('');
   const [sliderX] = useState(new Animated.Value((5 / 10) * SLIDER_W));
   const energyRef = useRef(5);
 
@@ -49,6 +54,29 @@ export default function CheckInScreen() {
       return () => clearTimeout(timer);
     }
   }, [submitted, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) {
+          setCurrentCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        }
+      } catch {
+        // Fallback to block coordinates handled on submit.
+      }
+    };
+    loadLocation();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateSlider = (x: number) => {
     const clamped = Math.max(0, Math.min(x, SLIDER_W));
@@ -66,24 +94,35 @@ export default function CheckInScreen() {
   })).current;
 
   const handleSubmit = async () => {
-    if (block) {
-      await submitCheckIn({
-        activity_block_id: block.id,
-        user_id: user?.id || '',
-        energy_level: energyLevel,
-        current_lat: block.resolved_lat ?? 51.1784,
-        current_lng: block.resolved_lng ?? -115.5708,
-        agent_outcome: energyLevel <= 4 ? 'rerouted' : 'affirmed',
-        selected_place_id: null,
-        selected_place_name: null,
-      });
+    if (!block || submitting) return;
+
+    setSubmitting(true);
+    setError('');
+
+    const lat = currentCoords?.lat ?? block.resolved_lat ?? 51.1784;
+    const lng = currentCoords?.lng ?? block.resolved_lng ?? -115.5708;
+
+    const result = await startCheckIn({
+      activityBlock: block,
+      energyLevel,
+      currentLat: lat,
+      currentLng: lng,
+    });
+
+    setSubmitting(false);
+
+    if (result.needs_rerouting) {
+      router.replace(`/checkin/suggestions?blockId=${blockId}` as never);
+      return;
     }
 
-    if (energyLevel <= 4) {
-      router.replace(`/checkin/suggestions?blockId=${blockId}` as never);
-    } else {
+    if (result.affirmation_message) {
+      setAffirmationMessage(result.affirmation_message);
       setSubmitted(true);
+      return;
     }
+
+    setError('Unable to complete check-in right now.');
   };
 
   const color = getEnergyColor(energyLevel);
@@ -104,7 +143,7 @@ export default function CheckInScreen() {
               <Feather name="check" size={32} color={C.white} />
             </View>
             <Text style={s.successTitle}>You're all set</Text>
-            <Text style={s.successSub}>Enjoy {block?.place_name ?? 'your activity'}</Text>
+            <Text style={s.successSub}>{affirmationMessage}</Text>
           </View>
         ) : (
           <>
@@ -133,10 +172,20 @@ export default function CheckInScreen() {
               </View>
             </View>
 
-            <Pressable style={[s.submitBtn, { backgroundColor: color }]} onPress={handleSubmit}>
+            {error ? <Text style={s.errorText}>{error}</Text> : null}
+
+            <Pressable
+              style={[s.submitBtn, { backgroundColor: color }, submitting && s.submitBtnDisabled]}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
               <Feather name="check-circle" size={16} color={C.white} />
               <Text style={s.submitBtnText}>
-                {energyLevel <= 4 ? 'Find gentler alternatives' : 'Check in'}
+                {submitting
+                  ? 'Checking in...'
+                  : energyLevel <= 6
+                    ? 'Find gentler alternatives'
+                    : 'Check in'}
               </Text>
             </Pressable>
 
@@ -187,6 +236,8 @@ const s = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8,
   },
   submitBtnText: { color: C.white, fontSize: 16, fontFamily: F.bold },
+  submitBtnDisabled: { opacity: 0.75 },
+  errorText: { color: C.eLowText, fontSize: 13, fontFamily: F.regular, marginBottom: 12, textAlign: 'center' },
 
   cancelBtn: { marginTop: 16 },
   cancelText: { fontSize: 14, fontFamily: F.medium, color: C.placeholder },
