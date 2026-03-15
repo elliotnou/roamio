@@ -59,7 +59,7 @@ export default function SignupScreen() {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={s.center} keyboardShouldPersistTaps="handled">
-          <Text style={s.logo}>TripPulse</Text>
+          <Text style={s.logo}>Roamio</Text>
           <Text style={s.tagline}>Create your account</Text>
 
           <View style={s.form}>

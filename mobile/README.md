@@ -1,6 +1,6 @@
 # Roamio Mobile
 
-A React Native mobile app for TripPulse, built with Expo.
+A React Native mobile app for Roamio, built with Expo.
 
 ## Getting Started
 

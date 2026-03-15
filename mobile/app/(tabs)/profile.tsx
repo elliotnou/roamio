@@ -9,7 +9,7 @@ import { F } from '../../lib/fonts';
 const menuItems: { icon: React.ComponentProps<typeof Feather>['name']; label: string; hint: string }[] = [
   { icon: 'bell', label: 'Notifications', hint: 'Manage alerts' },
   { icon: 'shield', label: 'Privacy & Security', hint: 'Data & permissions' },
-  { icon: 'star', label: 'Rate TripPulse', hint: 'Share your feedback' },
+  { icon: 'star', label: 'Rate Roamio', hint: 'Share your feedback' },
   { icon: 'help-circle', label: 'Help & Support', hint: 'FAQs & contact' },
 ];
 
@@ -60,7 +60,7 @@ export default function ProfileScreen() {
         <Pressable onPress={handleSignOut} style={s.signout}>
           <Text style={s.signoutText}>Sign Out</Text>
         </Pressable>
-        <Text style={s.version}>TripPulse v1.0.0</Text>
+        <Text style={s.version}>Roamio v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import {
   View, Text, ScrollView, Image, Pressable, StyleSheet,
-  Dimensions, Alert, Modal, TextInput, Platform,
+  Dimensions, Alert, Modal, TextInput, Platform, Share,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTripStore } from '../../../store/trip-store';
 import { ActivityIcon } from '../../../components/ActivityIcon';
 import { C } from '../../../lib/colors';
 import { F } from '../../../lib/fonts';
+import { buildTripCalendarIcs } from '../../../lib/ics';
 import { formatDate, getDayCount, getEnergyColor, getEnergyLabel } from '../../../lib/utils';
 import type { ActivityBlock } from '../../../types';
 
@@ -707,6 +710,42 @@ export default function TripDetailScreen() {
     ]);
   };
 
+  const handleShareCalendar = async () => {
+    if (!trip) return;
+
+    try {
+      const currentTrip = trip;
+      const icsContent = buildTripCalendarIcs(currentTrip, blocks);
+
+      const sanitizedDestination = currentTrip.destination
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      const fileName = `${sanitizedDestination || 'trip'}-${currentTrip.id}.ics`;
+      const calendarFile = new File(Paths.cache, fileName);
+      calendarFile.create({ overwrite: true, intermediates: true });
+      calendarFile.write(icsContent);
+
+      const canNativeShare = await Sharing.isAvailableAsync();
+      if (canNativeShare) {
+        await Sharing.shareAsync(calendarFile.uri, {
+          mimeType: 'text/calendar',
+          dialogTitle: 'Share itinerary as calendar',
+          UTI: 'public.ics',
+        });
+        return;
+      }
+
+      await Share.share({
+        title: `${currentTrip.destination} itinerary`,
+        message: `Roamio itinerary export:\n${calendarFile.uri}`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not export this itinerary right now.';
+      Alert.alert('Export failed', message);
+    }
+  };
+
   if (!trip) {
     return (
       <SafeAreaView style={s.safe}>
@@ -750,7 +789,9 @@ export default function TripDetailScreen() {
               }}>
                 <Feather name="trash-2" size={18} color={C.white} />
               </Pressable>
-              <Pressable style={s.heroBtn}><Feather name="share" size={18} color={C.white} /></Pressable>
+              <Pressable style={s.heroBtn} onPress={handleShareCalendar}>
+                <Feather name="share" size={18} color={C.white} />
+              </Pressable>
             </View>
           </View>
         </View>

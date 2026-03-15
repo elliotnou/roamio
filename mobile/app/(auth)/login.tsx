@@ -54,7 +54,7 @@ export default function LoginScreen() {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.center}>
-          <Text style={s.logo}>TripPulse</Text>
+          <Text style={s.logo}>Roamio</Text>
           <Text style={s.tagline}>Your wellness travel companion</Text>
 
           <View style={s.form}>
