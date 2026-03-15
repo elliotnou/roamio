@@ -1356,6 +1356,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
     const dayBlocks = allBlocks.filter((b) => b.day_index === dayIndex);
     if (dayBlocks.length <= 1) return null;
 
+    // Use check-in energy to decide how aggressively to simplify
     const tripCheckIns = checkIns.filter((c) =>
       allBlocks.some((b) => b.id === c.activity_block_id)
     );
@@ -1363,83 +1364,32 @@ export const useTripStore = create<TripStore>((set, get) => ({
       ? tripCheckIns.reduce((sum, c) => sum + c.energy_level, 0) / tripCheckIns.length
       : 5;
 
-    const activitiesJson = dayBlocks.map((b) => ({
+    // Low energy → drop more (up to 50%), high energy → drop less (down to 20%)
+    const dropRatio = avgEnergy <= 3 ? 0.5 : avgEnergy <= 5 ? 0.35 : 0.2;
+
+    // Drop the highest energy-cost activities to simplify the day
+    const sorted = [...dayBlocks].sort(
+      (a, b) => (b.energy_cost_estimate ?? 5) - (a.energy_cost_estimate ?? 5)
+    );
+    const dropCount = Math.max(1, Math.floor(sorted.length * dropRatio));
+    const dropIds = new Set(sorted.slice(0, dropCount).map((b) => b.id));
+
+    const lowEnergyMsg = avgEnergy <= 3;
+    const items: CompactifyItem[] = dayBlocks.map((b) => ({
       id: b.id,
       place_name: b.place_name,
-      activity_type: b.activity_type,
       start_time: b.start_time,
       end_time: b.end_time,
-      energy_cost_estimate: b.energy_cost_estimate ?? 5,
+      action: dropIds.has(b.id) ? 'drop' as const : 'keep' as const,
+      reason: dropIds.has(b.id)
+        ? lowEnergyMsg ? 'Your energy is low — let this one go today' : 'High energy cost — save it for a better day'
+        : 'Fits your vibe',
     }));
 
-    const prompt = `You are Roamio AI, a travel wellness assistant helping an overwhelmed traveler simplify their day.
+    const summary = lowEnergyMsg
+      ? "You're running low — we cut the heavy stuff so you can recharge. Take it easy."
+      : "We trimmed the most draining activities so you can breathe. You've still got a great day ahead.";
 
-CONTEXT:
-- Destination: ${trip.destination}
-- Travel vibes: ${(trip.travel_vibes ?? []).join(', ') || 'not specified'}
-- Day ${dayIndex + 1} of their trip
-- Average energy level across check-ins: ${avgEnergy.toFixed(1)}/10
-- Number of recent low-energy check-ins: ${tripCheckIns.filter((c) => c.energy_level <= 4).length}
-
-TODAY'S ACTIVITIES (${dayBlocks.length} total):
-${JSON.stringify(activitiesJson, null, 2)}
-
-TASK:
-The traveler is feeling overwhelmed. Simplify their day by deciding which activities to KEEP and which to DROP.
-
-Rules:
-- Keep the activities that best match their travel vibes and are most essential to the destination experience
-- Drop activities that are high-energy, redundant, or less important
-- Aim to keep roughly 50-70% of activities — enough to still have a great day without burnout
-- Never drop ALL activities
-- Be warm and human in your reasoning — this person is stressed in a foreign country
-
-Return ONLY valid JSON in this exact format:
-{
-  "items": [
-    { "id": "<activity id>", "place_name": "<name>", "action": "keep", "reason": "short reason" },
-    { "id": "<activity id>", "place_name": "<name>", "action": "drop", "reason": "short reason" }
-  ],
-  "summary": "A warm 1-2 sentence message explaining the simplified day, with a touch of humor or reassurance"
-}`;
-
-    try {
-      const result = await callGemini<CompactifyResult>(prompt);
-      if (!result?.items || !Array.isArray(result.items)) return null;
-
-      // Merge times from actual blocks
-      const enriched: CompactifyItem[] = result.items.map((item) => {
-        const block = dayBlocks.find((b) => b.id === item.id);
-        return {
-          ...item,
-          start_time: block?.start_time ?? '',
-          end_time: block?.end_time ?? '',
-        };
-      });
-
-      return { items: enriched, summary: result.summary || '' };
-    } catch (err) {
-      console.error('[compactifyDay] Gemini failed:', err);
-      // Fallback: drop the highest energy-cost activities
-      const sorted = [...dayBlocks].sort(
-        (a, b) => (b.energy_cost_estimate ?? 5) - (a.energy_cost_estimate ?? 5)
-      );
-      const dropCount = Math.max(1, Math.floor(sorted.length * 0.35));
-      const dropIds = new Set(sorted.slice(0, dropCount).map((b) => b.id));
-
-      const items: CompactifyItem[] = dayBlocks.map((b) => ({
-        id: b.id,
-        place_name: b.place_name,
-        start_time: b.start_time,
-        end_time: b.end_time,
-        action: dropIds.has(b.id) ? 'drop' as const : 'keep' as const,
-        reason: dropIds.has(b.id) ? 'High energy cost — save it for a better day' : 'Fits your vibe',
-      }));
-
-      return {
-        items,
-        summary: "We trimmed the most draining activities so you can breathe. You've still got a great day ahead.",
-      };
-    }
+    return { items, summary };
   },
 }));
