@@ -41,6 +41,31 @@ function sortBlocksByDayAndTime<T extends { day_index: number; start_time: strin
   });
 }
 
+function groupBlocksByDay<T extends { day_index: number }>(
+  blocks: T[]
+): Array<{ dayIndex: number; blocks: T[] }> {
+  const groups = new Map<number, T[]>();
+  blocks.forEach((block) => {
+    const dayKey = block.day_index ?? 0;
+    const existing = groups.get(dayKey) || [];
+    existing.push(block);
+    groups.set(dayKey, existing);
+  });
+
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([dayIndex, dayBlocks]) => ({ dayIndex, blocks: dayBlocks }));
+}
+
+function getTripDateByDay(startDate: string, dayIndex: number): string {
+  const date = new Date(`${startDate}T00:00:00`);
+  date.setDate(date.getDate() + dayIndex);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getCurrentTripDayIndex(startDate: string, endDate: string, now: Date): number | null {
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T23:59:59`);
@@ -83,6 +108,7 @@ export default function DashboardScreen() {
 
   const upcomingBlocks = displayBlocks.filter((b) => !checkedInIds.has(b.id));
   const nextBlock = upcomingBlocks.length > 0 ? upcomingBlocks[0] : null;
+  const groupedDisplayBlocks = groupBlocksByDay(displayBlocks);
   const activitySectionTitle =
     blocksForCurrentDay.length > 0 && currentTripDayIndex != null
       ? `Day ${currentTripDayIndex + 1} Activities`
@@ -210,39 +236,68 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {displayBlocks.map((block) => {
-              const isActive = block.id === activeBlock?.id;
-              const isCheckedIn = checkedInIds.has(block.id);
-              const ec = getEnergyColor(block.energy_cost_estimate);
-              return (
-                <View key={block.id} style={[s.blockCard, isActive && s.blockCardActive]}>
-                  {isActive && <View style={s.activeIndicator}><Text style={s.activeText}>NOW</Text></View>}
-                  <View style={s.blockRow}>
-                    <View style={[s.blockIcon, isActive && s.blockIconActive]}>
-                      <ActivityIcon type={block.activity_type} size={isActive ? 20 : 18} color={isActive ? C.sage : C.secondary} />
-                    </View>
-                    <View style={s.blockContent}>
-                      <View style={s.blockTop}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.blockName}>{block.place_name}</Text>
-                          <Text style={s.blockTime}>{formatTimeRange(block.start_time, block.end_time)}</Text>
-                        </View>
-                        <View style={[s.energyBadge, { backgroundColor: ec.bg }]}>
-                          <Text style={[s.energyText, { color: ec.text }]}>{getEnergyLabel(block.energy_cost_estimate)}</Text>
+            {groupedDisplayBlocks.map((dayGroup) => (
+              <View key={`day-${dayGroup.dayIndex}`} style={s.dayGroup}>
+                <View style={s.dayHeaderRow}>
+                  <View style={s.dayHeaderPill}>
+                    <Feather name="calendar" size={12} color={C.secondary} />
+                    <Text style={s.dayHeaderPillText}>Day {dayGroup.dayIndex + 1}</Text>
+                  </View>
+                  <Text style={s.dayHeaderDate}>
+                    {formatDate(getTripDateByDay(activeTrip.start_date, dayGroup.dayIndex))}
+                  </Text>
+                </View>
+
+                {dayGroup.blocks.map((block, idx) => {
+                  const isActive = block.id === activeBlock?.id;
+                  const isCheckedIn = checkedInIds.has(block.id);
+                  const ec = getEnergyColor(block.energy_cost_estimate);
+                  const isLastInDay = idx === dayGroup.blocks.length - 1;
+
+                  return (
+                    <View key={block.id} style={s.timelineRow}>
+                      <View style={s.timelineRail}>
+                        <View
+                          style={[
+                            s.timelineDot,
+                            isCheckedIn && s.timelineDotDone,
+                            isActive && s.timelineDotActive,
+                          ]}
+                        />
+                        {!isLastInDay && <View style={s.timelineLine} />}
+                      </View>
+
+                      <View style={[s.blockCard, isActive && s.blockCardActive]}>
+                        {isActive && <View style={s.activeIndicator}><Text style={s.activeText}>NOW</Text></View>}
+                        <View style={s.blockRow}>
+                          <View style={[s.blockIcon, isActive && s.blockIconActive]}>
+                            <ActivityIcon type={block.activity_type} size={isActive ? 14 : 12} color={isActive ? C.sage : C.secondary} />
+                          </View>
+                          <View style={s.blockContent}>
+                            <View style={s.blockTop}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={s.blockName}>{block.place_name}</Text>
+                                <Text style={s.blockTime}>{formatTimeRange(block.start_time, block.end_time)}</Text>
+                              </View>
+                              <View style={[s.energyBadge, { backgroundColor: ec.bg }]}>
+                                <Text style={[s.energyText, { color: ec.text }]}>{getEnergyLabel(block.energy_cost_estimate)}</Text>
+                              </View>
+                            </View>
+                            {isCheckedIn && <View style={s.doneRow}><View style={s.doneDot} /><Text style={s.doneText}>Checked in</Text></View>}
+                            {!isCheckedIn && isActive && (
+                              <Pressable style={s.checkinBtn} onPress={() => router.push(`/checkin/${block.id}` as never)}>
+                                <Feather name="check-circle" size={14} color={C.white} />
+                                <Text style={s.checkinBtnText}>Check In</Text>
+                              </Pressable>
+                            )}
+                          </View>
                         </View>
                       </View>
-                      {isCheckedIn && <View style={s.doneRow}><View style={s.doneDot} /><Text style={s.doneText}>Checked in</Text></View>}
-                      {!isCheckedIn && isActive && (
-                        <Pressable style={s.checkinBtn} onPress={() => router.push(`/checkin/${block.id}` as never)}>
-                          <Feather name="check-circle" size={14} color={C.white} />
-                          <Text style={s.checkinBtnText}>Check In</Text>
-                        </Pressable>
-                      )}
                     </View>
-                  </View>
-                </View>
-              );
-            })}
+                  );
+                })}
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
@@ -361,6 +416,19 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg },
   badge: { backgroundColor: C.cardBg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 },
   badgeText: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
+  dayGroup: { marginBottom: 10 },
+  dayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, paddingHorizontal: 2 },
+  dayHeaderPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.cardBg,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  dayHeaderPillText: { fontSize: 12, fontFamily: F.semiBold, color: C.secondary },
+  dayHeaderDate: { fontSize: 12, fontFamily: F.medium, color: C.placeholder },
 
   nextCard: { backgroundColor: C.white, borderRadius: 18, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: C.border },
   nextCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -369,35 +437,54 @@ const s = StyleSheet.create({
   nextName: { marginTop: 6, fontSize: 16, fontFamily: F.bold, color: C.fg },
   nextCheckBtn: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.charcoal, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, marginTop: 10 },
   nextCheckText: { color: C.white, fontSize: 12, fontFamily: F.semiBold },
+  timelineRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
+  timelineRail: { width: 18, alignItems: 'center' },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: C.border,
+    borderWidth: 1.5,
+    borderColor: C.white,
+    marginTop: 12,
+    zIndex: 2,
+  },
+  timelineDotDone: { backgroundColor: C.sageDark },
+  timelineDotActive: { backgroundColor: C.sage },
+  timelineLine: { width: 1.5, flex: 1, backgroundColor: C.border, marginTop: 4 },
 
   blockCard: {
+    flex: 1,
     backgroundColor: C.white,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    borderLeftWidth: 4,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
     borderLeftColor: 'transparent',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  blockCardActive: { borderLeftColor: C.sage, shadowOpacity: 0.12, shadowRadius: 16, transform: [{ scale: 1.02 }] },
-  activeIndicator: { position: 'absolute', top: -10, right: 20, backgroundColor: C.sage, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, zIndex: 1, shadowColor: C.sage, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 },
-  activeText: { color: C.white, fontSize: 10, fontFamily: F.bold, letterSpacing: 1 },
-  blockRow: { flexDirection: 'row', gap: 16 },
-  blockIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center' },
+  blockCardActive: { borderLeftColor: C.sage, shadowOpacity: 0.06, shadowRadius: 6 },
+  activeIndicator: { position: 'absolute', top: -7, right: 10, backgroundColor: C.sage, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, zIndex: 1, shadowColor: C.sage, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2 },
+  activeText: { color: C.white, fontSize: 9, fontFamily: F.bold, letterSpacing: 0.5 },
+  blockRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  blockIcon: { width: 28, height: 28, borderRadius: 6, backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center' },
   blockIconActive: { backgroundColor: C.sage + '20' },
   blockContent: { flex: 1, justifyContent: 'center' },
   blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  blockName: { fontSize: 16, fontFamily: F.bold, color: C.fg },
-  blockTime: { fontSize: 13, fontFamily: F.medium, color: C.placeholder, marginTop: 4 },
-  energyBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  energyText: { fontSize: 10, fontFamily: F.semiBold },
-  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  doneDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.sage },
-  doneText: { fontSize: 12, fontFamily: F.medium, color: C.eHighText },
-  checkinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 16, marginTop: 12 },
-  checkinBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
+  blockName: { fontSize: 13, fontFamily: F.bold, color: C.fg },
+  blockTime: { fontSize: 11, fontFamily: F.medium, color: C.placeholder, marginTop: 1 },
+  energyBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  energyText: { fontSize: 9, fontFamily: F.semiBold },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  doneDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: C.sage },
+  doneText: { fontSize: 11, fontFamily: F.medium, color: C.eHighText },
+  checkinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.charcoal, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginTop: 6, alignSelf: 'flex-start' },
+  checkinBtnText: { color: C.white, fontSize: 11, fontFamily: F.semiBold },
 });
