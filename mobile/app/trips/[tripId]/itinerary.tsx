@@ -45,15 +45,9 @@ function toActivityTimestamp(tripStartDate: string, dayIndex: number, time: Date
   const base = new Date(`${tripStartDate}T00:00:00`);
   base.setDate(base.getDate() + dayIndex);
   base.setHours(time.getHours(), time.getMinutes(), 0, 0);
-  
-  // Format as local ISO string to avoid UTC shift
-  const y = base.getFullYear();
-  const m = String(base.getMonth() + 1).padStart(2, '0');
-  const d = String(base.getDate()).padStart(2, '0');
-  const h = String(base.getHours()).padStart(2, '0');
-  const min = String(base.getMinutes()).padStart(2, '0');
-  const s = String(base.getSeconds()).padStart(2, '0');
-  return `${y}-${m}-${d}T${h}:${min}:${s}`;
+
+  // Persist timezone-aware timestamps for Postgres timestamptz columns.
+  return base.toISOString();
 }
 
 function formatExistingBlockTime(value: string): string {
