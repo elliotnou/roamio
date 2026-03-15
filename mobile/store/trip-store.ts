@@ -19,7 +19,7 @@ import {
 import { resolvePlace } from '../lib/agent/resolve';
 import { classifyCheckIn } from '../lib/agent/classifier';
 import { rankAlternatives } from '../lib/agent/ranker';
-import { fetchNearbyPlaces } from '../lib/places';
+import { fetchNearbyPlaces, fetchPlacePrimaryPhotoUrl } from '../lib/places';
 
 function normalizeTime(value: string): string {
   if (!value) return value;
@@ -58,6 +58,25 @@ function mapSuggestion(suggestion: any): ActivitySuggestion {
         : 0,
     image_url: suggestion.image_url,
   };
+}
+
+async function attachSuggestionImages(suggestions: ActivitySuggestion[]): Promise<ActivitySuggestion[]> {
+  const enriched = await Promise.all(
+    suggestions.map(async (suggestion) => {
+      if (suggestion.image_url || !suggestion.place_id) {
+        return suggestion;
+      }
+
+      try {
+        const imageUrl = await fetchPlacePrimaryPhotoUrl(suggestion.place_id);
+        return imageUrl ? { ...suggestion, image_url: imageUrl } : suggestion;
+      } catch {
+        return suggestion;
+      }
+    })
+  );
+
+  return enriched;
 }
 
 function mapAgentTypeToActivityType(type: AgentActivityType): ActivityType {
@@ -617,7 +636,8 @@ export const useTripStore = create<TripStore>((set, get) => ({
           current_time: new Date().toISOString(),
         });
 
-        const suggestions = (suggestionResponse.suggestions || []).map(mapSuggestion);
+        const baseSuggestions = (suggestionResponse.suggestions || []).map(mapSuggestion);
+        const suggestions = await attachSuggestionImages(baseSuggestions);
         if (suggestions.length > 0) {
           set({ suggestions });
           return {
@@ -699,7 +719,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
       });
 
       // Convert ranked suggestions to ActivitySuggestion format
-      const suggestions: ActivitySuggestion[] = rankerResult.suggestions.map((s) => {
+      const baseSuggestions: ActivitySuggestion[] = rankerResult.suggestions.map((s) => {
         const nearbyMatch = nearbyPlaces.find((p) => p.placeId === s.place_id);
         return {
           place_id: s.place_id,
@@ -713,6 +733,8 @@ export const useTripStore = create<TripStore>((set, get) => ({
           estimated_duration_minutes: 60,
         };
       });
+
+      const suggestions = await attachSuggestionImages(baseSuggestions);
 
       set({ suggestions });
 

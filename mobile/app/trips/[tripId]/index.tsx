@@ -125,16 +125,11 @@ function EditSheet({
     setEnd(nudgeDate(end, minutes));
   };
 
-  const toISO = (d: Date, ref: string): string => {
-    // keep the calendar date from the original block, only change H:M
-    const base = parseTime(ref) ?? new Date(ref);
-    base.setHours(d.getHours(), d.getMinutes(), 0, 0);
-    const y = base.getFullYear();
-    const mo = String(base.getMonth() + 1).padStart(2, '0');
-    const da = String(base.getDate()).padStart(2, '0');
-    const h  = String(base.getHours()).padStart(2, '0');
-    const mi = String(base.getMinutes()).padStart(2, '0');
-    return `${y}-${mo}-${da}T${h}:${mi}:00`;
+  const toPersistedTimestamp = (timeValue: Date, referenceTime: string): string => {
+    const base = parseTime(referenceTime) ?? new Date();
+    base.setHours(timeValue.getHours(), timeValue.getMinutes(), 0, 0);
+    // Persist timezone-aware timestamps to avoid hour shifts after DB roundtrip.
+    return base.toISOString();
   };
 
   const handleSave = async () => {
@@ -142,8 +137,8 @@ function EditSheet({
     setSaving(true);
     await onSave({
       place_name: name.trim(),
-      start_time: toISO(start, block.start_time),
-      end_time:   toISO(end,   block.end_time),
+      start_time: toPersistedTimestamp(start, block.start_time),
+      end_time:   toPersistedTimestamp(end, block.end_time),
     });
     setSaving(false);
   };
@@ -263,8 +258,11 @@ function EditSheet({
             display="spinner"
             minuteInterval={15}
             textColor={C.fg}
-            onChange={(_, date) => {
-              if (!date) return;
+            onChange={(event, date) => {
+              if (event.type !== 'set' || !date) {
+                if (Platform.OS === 'android') setPicker(null);
+                return;
+              }
               if (picker === 'start') {
                 const duration = end.getTime() - start.getTime();
                 setStart(date);
@@ -272,6 +270,7 @@ function EditSheet({
               } else {
                 setEnd(date);
               }
+              if (Platform.OS === 'android') setPicker(null);
             }}
           />
         </View>
