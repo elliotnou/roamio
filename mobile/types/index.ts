@@ -119,3 +119,38 @@ export interface IntentClassifierOutput {
   affirmation_message: string | null;
   reasoning: string;
 }
+
+export type CommunityNeedCategory =
+  | 'food_and_water'
+  | 'medication'
+  | 'safe_rest'
+  | 'mental_health'
+  | 'transit_help';
+
+export interface CommunitySupportCategory {
+  id: CommunityNeedCategory;
+  label: string;
+  description: string;
+  icon: string;
+}
+
+export interface CommunitySupportPlace {
+  place_id: string;
+  place_name: string;
+  address: string;
+  maps_url: string;
+  distance_km: number;
+  rating: number | null;
+  user_rating_count: number | null;
+  open_now: boolean | null;
+  business_status: string | null;
+  matched_tags: string[];
+}
+
+export interface CommunityFallbackResource {
+  name: string;
+  type: 'phone' | 'web';
+  contact: string;
+  description: string;
+  url: string;
+}

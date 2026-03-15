@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, Image, Pressable, StyleSheet,
   Dimensions, Alert, Modal, TextInput, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -622,6 +622,7 @@ export default function TripDetailScreen() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const { trips, activityBlocks, checkIns, deleteActivityBlock, updateActivityBlock } = useTripStore();
+  const insets = useSafeAreaInsets();
 
   const trip = trips.find(t => t.id === tripId);
   const blocks = activityBlocks[tripId ?? ''] || [];
@@ -674,7 +675,7 @@ export default function TripDetailScreen() {
             ? <Image source={{ uri: trip.destination_image }} style={s.heroImage} />
             : <View style={[s.heroImage, { backgroundColor: C.sage }]} />}
           <LinearGradient colors={['rgba(0,0,0,0.3)', 'transparent', 'rgba(0,0,0,0.5)']} style={StyleSheet.absoluteFill} />
-          <SafeAreaView style={s.heroOverlay}>
+          <View style={[s.heroOverlay, { paddingTop: insets.top + 16 }]}>
             <Pressable onPress={() => router.back()} style={s.heroBtn}>
               <Feather name="chevron-left" size={20} color={C.white} />
             </Pressable>
@@ -693,7 +694,7 @@ export default function TripDetailScreen() {
               </Pressable>
               <Pressable style={s.heroBtn}><Feather name="share" size={18} color={C.white} /></Pressable>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
 
         {/* Trip info */}

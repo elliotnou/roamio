@@ -1,6 +1,14 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
-import type { ActivityBlock, ActivitySuggestion, CheckIn } from '../types';
+import type {
+  ActivityBlock,
+  ActivitySuggestion,
+  CheckIn,
+  CommunityNeedCategory,
+  CommunitySupportCategory,
+  CommunitySupportPlace,
+  CommunityFallbackResource,
+} from '../types';
 
 const DEFAULT_BACKEND_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
@@ -52,6 +60,21 @@ export interface BackendSuggestionsResponse {
   _places_available?: boolean;
 }
 
+export interface BackendCommunitySupportResponse {
+  category: {
+    id: CommunityNeedCategory;
+    label: string;
+    description: string;
+  };
+  results: CommunitySupportPlace[];
+  fallback_resources: CommunityFallbackResource[];
+  fetched_count: number;
+}
+
+export interface BackendCommunityCategoriesResponse {
+  categories: CommunitySupportCategory[];
+}
+
 export async function createActivityBlockViaBackend(
   tripId: string,
   payload: Omit<ActivityBlock, 'id'>
@@ -91,6 +114,24 @@ export async function updateCheckInOutcomeViaBackend(
 ) {
   return backendFetch<{ check_in: CheckIn }>(`/checkins/${checkInId}/outcome`, {
     method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getCommunitySupportCategories() {
+  return backendFetch<BackendCommunityCategoriesResponse>('/community-support/categories', {
+    method: 'GET',
+  });
+}
+
+export async function requestCommunitySupportPlaces(payload: {
+  need_category: CommunityNeedCategory;
+  current_lat: number;
+  current_lng: number;
+  radius_meters?: number;
+}) {
+  return backendFetch<BackendCommunitySupportResponse>('/community-support/find', {
+    method: 'POST',
     body: JSON.stringify(payload),
   });
 }

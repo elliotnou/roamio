@@ -3,6 +3,7 @@ import express from "express";
 import tripsRoutes from "./trips/trips.routes.js";
 import checkinsRoutes from "./checkins/checkins.routes.js";
 import suggestionsRoutes from "./suggestions/suggestions.routes.js";
+import communitySupportRoutes from "./community-support/support.routes.js";
 import { requireAuth } from "./middleware/auth.middleware.js";
 
 const app = express();
@@ -17,6 +18,7 @@ app.get("/health", (_req, res) => {
 app.use("/trips", requireAuth, tripsRoutes);
 app.use("/checkins", requireAuth, checkinsRoutes);
 app.use("/suggestions", requireAuth, suggestionsRoutes);
+app.use("/community-support", requireAuth, communitySupportRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error("Unhandled backend error:", err);
