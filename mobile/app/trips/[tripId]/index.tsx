@@ -309,8 +309,11 @@ function EditSheet({
             display="spinner"
             minuteInterval={15}
             textColor={C.fg}
-            onChange={(_, date) => {
-              if (!date) return;
+            onChange={(event, date) => {
+              if (event.type !== 'set' || !date) {
+                if (Platform.OS === 'android') setPicker(null);
+                return;
+              }
               const normalized = normalizeClockDate(date);
               if (picker === 'start') {
                 const duration = end.getTime() - start.getTime();
@@ -319,6 +322,7 @@ function EditSheet({
               } else {
                 setEnd(normalized);
               }
+              if (Platform.OS === 'android') setPicker(null);
             }}
           />
         </View>
