@@ -7,7 +7,7 @@ import { ChevronRight, Bell, Shield, HelpCircle, Star } from 'lucide-react';
 const menuItems = [
   { icon: Bell, label: 'Notifications', hint: 'Manage alerts' },
   { icon: Shield, label: 'Privacy & Security', hint: 'Data & permissions' },
-  { icon: Star, label: 'Rate TripPulse', hint: 'Share your feedback' },
+  { icon: Star, label: 'Rate Roamio', hint: 'Share your feedback' },
   { icon: HelpCircle, label: 'Help & Support', hint: 'FAQs & contact' },
 ];
 
@@ -82,7 +82,7 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      <p className="text-center text-xs text-[#ADADAD] pb-2">TripPulse v1.0.0</p>
+      <p className="text-center text-xs text-[#ADADAD] pb-2">Roamio v1.0.0</p>
     </div>
   );
 }

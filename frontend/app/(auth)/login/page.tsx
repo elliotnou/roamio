@@ -23,7 +23,7 @@ export default function LoginPage() {
         {/* Logo / Wordmark */}
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-[#8B9A7B] tracking-tight">
-            TripPulse
+            Roamio
           </h1>
           <p className="text-[#6B6B6B] mt-3 text-sm">Your wellness travel companion</p>
         </div>
