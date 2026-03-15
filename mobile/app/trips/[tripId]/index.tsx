@@ -926,7 +926,7 @@ export default function TripDetailScreen() {
             <View style={[s.actionCircle, s.actionCircleDark]}>
               <Feather name="zap" size={18} color={C.white} />
             </View>
-            <Text style={s.actionLabel}>Curate with AI</Text>
+            <Text style={s.actionLabel}>Curate with Gemini</Text>
           </Pressable>
         </View>
       </ScrollView>
