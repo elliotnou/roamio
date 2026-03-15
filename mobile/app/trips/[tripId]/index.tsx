@@ -116,6 +116,17 @@ function blockColor(block: ActivityBlock): string {
   return C.sage;
 }
 
+function getCuratedDescription(block: ActivityBlock): string | null {
+  if (block.activity_type !== 'mindful') return null;
+  const text = block.resolved_place_name?.trim();
+  return text ? text : null;
+}
+
+function formatActivityGroupTitle(type: ActivityBlock['activity_type']): string {
+  if (type === 'mindful') return 'Calm Curations';
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
 /** Returns the first block (excluding self) that overlaps [start, end] */
 function findConflict(
   blocks: ActivityBlock[],
@@ -407,6 +418,7 @@ function ItineraryTab({
             const isConflict = conflictIds.has(block.id);
             const ec = getEnergyColor(block.energy_cost_estimate);
             const dur = durationLabel(block.start_time, block.end_time);
+            const curatedDescription = getCuratedDescription(block);
             const isLast = idx === dayBlocks.length - 1;
             const gap = !isLast ? gapMinutes(block, dayBlocks[idx + 1]) : 0;
 
@@ -450,6 +462,13 @@ function ItineraryTab({
                         <Feather name="edit-2" size={12} color={C.placeholder} />
                       </View>
                     </View>
+
+                    {curatedDescription ? (
+                      <View style={il.curatedRow}>
+                        <Feather name="heart" size={11} color={C.sageDark} />
+                        <Text style={il.curatedText} numberOfLines={2}>{curatedDescription}</Text>
+                      </View>
+                    ) : null}
 
                     {/* Conflict warning */}
                     {isConflict && (
@@ -555,17 +574,19 @@ function ActivitiesTab({ blocks, checkedInIds }: { blocks: ActivityBlock[]; chec
         <View key={type} style={at.group}>
           <View style={at.groupHeader}>
             <ActivityIcon type={type as any} size={15} color={C.sage} />
-            <Text style={at.groupTitle}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
+            <Text style={at.groupTitle}>{formatActivityGroupTitle(type as ActivityBlock['activity_type'])}</Text>
             <View style={at.groupBadge}><Text style={at.groupBadgeText}>{typeBlocks.length}</Text></View>
           </View>
           {typeBlocks.map(block => {
             const isDone = checkedInIds.has(block.id);
             const ec = getEnergyColor(block.energy_cost_estimate);
+            const curatedDescription = getCuratedDescription(block);
             return (
               <View key={block.id} style={[at.row, isDone && at.rowDone]}>
                 <View style={[at.dot, { backgroundColor: isDone ? C.sage : blockColor(block) }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={[at.name, isDone && at.nameDone]}>{block.place_name}</Text>
+                  {curatedDescription ? <Text style={at.curatedMeta}>{curatedDescription}</Text> : null}
                   <Text style={at.meta}>{fmtTime(block.start_time)}  ·  Day {block.day_index + 1}</Text>
                 </View>
                 <View style={[at.tag, { backgroundColor: ec.bg }]}>
@@ -677,7 +698,14 @@ function DetailsTab({ trip, blocks, checkInCount }: { trip: any; blocks: Activit
 export default function TripDetailScreen() {
   const router = useRouter();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { trips, activityBlocks, checkIns, deleteActivityBlock, updateActivityBlock } = useTripStore();
+  const {
+    trips,
+    activityBlocks,
+    checkIns,
+    deleteActivityBlock,
+    updateActivityBlock,
+    generateCuratedItinerary,
+  } = useTripStore();
   const insets = useSafeAreaInsets();
 
   const trip = trips.find(t => t.id === tripId);
@@ -688,6 +716,7 @@ export default function TripDetailScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const [activeDay, setActiveDay] = useState(0);
   const [editingBlock, setEditingBlock] = useState<ActivityBlock | null>(null);
+  const [isCurating, setIsCurating] = useState(false);
 
   const handleSaveEdit = async (updates: { place_name: string; start_time: string; end_time: string }) => {
     if (!editingBlock) return false;
@@ -746,6 +775,41 @@ export default function TripDetailScreen() {
     }
   };
 
+  const runGeminiCuration = async (replaceExisting: boolean) => {
+    if (!trip || isCurating) return;
+    setIsCurating(true);
+    const generated = await generateCuratedItinerary(trip.id, { replaceExisting });
+    setIsCurating(false);
+
+    if (!generated || generated.length === 0) {
+      Alert.alert('Could not curate itinerary', 'Please try again in a moment.');
+      return;
+    }
+
+    setActiveTab(0);
+    setActiveDay(0);
+    Alert.alert('Itinerary curated', `Gemini added ${generated.length} calm activities for this trip.`);
+  };
+
+  const handleCuratePress = () => {
+    if (isCurating) return;
+
+    if (blocks.length > 0) {
+      Alert.alert(
+        'Curate with Gemini',
+        'You already have activities. Do you want to replace them or append Gemini ideas?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Append', onPress: () => runGeminiCuration(false) },
+          { text: 'Replace', style: 'destructive', onPress: () => runGeminiCuration(true) },
+        ]
+      );
+      return;
+    }
+
+    runGeminiCuration(false);
+  };
+
   if (!trip) {
     return (
       <SafeAreaView style={s.safe}>
@@ -799,10 +863,22 @@ export default function TripDetailScreen() {
         {/* Trip info */}
         <View style={s.info}>
           <Text style={s.tripName}>{trip.destination}</Text>
-          <View style={s.tripMeta}>
-            <Feather name="calendar" size={14} color={C.secondary} />
-            <Text style={s.tripDates}>{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</Text>
-            <View style={s.dayPill}><Text style={s.dayPillText}>{dayCount}d</Text></View>
+          <View style={s.tripMetaRow}>
+            <View style={s.tripMeta}>
+              <Feather name="calendar" size={14} color={C.secondary} />
+              <Text style={s.tripDates}>{formatDate(trip.start_date)} - {formatDate(trip.end_date)}</Text>
+              <View style={s.dayPill}><Text style={s.dayPillText}>{dayCount}d</Text></View>
+            </View>
+            <Pressable
+              style={[s.curateBtn, isCurating && s.curateBtnDisabled]}
+              onPress={handleCuratePress}
+              disabled={isCurating}
+            >
+              <Feather name="cpu" size={13} color={isCurating ? C.placeholder : C.sageDark} />
+              <Text style={[s.curateBtnText, isCurating && s.curateBtnTextDisabled]}>
+                {isCurating ? 'Curating...' : 'Curate with Gemini'}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -886,10 +962,25 @@ const s = StyleSheet.create({
   heroBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
   info: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
   tripName: { fontSize: 32, fontFamily: F.bold, color: C.fg, letterSpacing: -0.5 },
-  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  tripMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, gap: 10 },
+  tripMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tripDates: { fontSize: 15, fontFamily: F.medium, color: C.secondary },
   dayPill: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   dayPillText: { fontSize: 12, fontFamily: F.bold, color: C.secondary },
+  curateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.sage + '18',
+    borderWidth: 1,
+    borderColor: C.sage + '35',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  curateBtnDisabled: { opacity: 0.65 },
+  curateBtnText: { fontSize: 12, fontFamily: F.semiBold, color: C.sageDark },
+  curateBtnTextDisabled: { color: C.placeholder },
   tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
   tab: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
   tabActive: { backgroundColor: C.charcoal },
@@ -936,6 +1027,8 @@ const il = StyleSheet.create({
 
   conflictRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   conflictText: { fontSize: 11, fontFamily: F.semiBold, color: C.eLowText },
+  curatedRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 6 },
+  curatedText: { fontSize: 12, fontFamily: F.regular, color: C.secondary, lineHeight: 16, flex: 1 },
 
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaText: { fontSize: 11, fontFamily: F.regular, color: C.placeholder },
@@ -978,6 +1071,7 @@ const at = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   name: { fontSize: 14, fontFamily: F.semiBold, color: C.fg },
   nameDone: { textDecorationLine: 'line-through', color: C.secondary },
+  curatedMeta: { fontSize: 12, fontFamily: F.regular, color: C.secondary, marginTop: 2, marginBottom: 2, lineHeight: 16 },
   meta: { fontSize: 12, fontFamily: F.regular, color: C.placeholder, marginTop: 2 },
   tag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
   tagText: { fontSize: 11, fontFamily: F.semiBold },
@@ -1067,3 +1161,4 @@ const es = StyleSheet.create({
   pickerTitle: { fontSize: 15, fontFamily: F.semiBold, color: C.fg },
   pickerDone: { fontSize: 15, fontFamily: F.semiBold, color: C.sage },
 });
+

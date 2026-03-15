@@ -10,6 +10,7 @@ export type ActivityType =
   | 'restaurant' | 'cafe'
   | 'shopping' | 'market'
   | 'spa' | 'park' | 'beach'
+  | 'mindful'
   | 'other';
 
 /**

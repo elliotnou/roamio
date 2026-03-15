@@ -4,6 +4,7 @@
 import { Router } from "express";
 import { getUserTrips, getTripById, createTrip } from "./trips.service.js";
 import { getBlocksForTrip, createActivityBlock, patchBlockResolution } from "./activities.service.js";
+import { curateTripItinerary } from "./curation.service.js";
 
 const router = Router();
 
@@ -61,6 +62,20 @@ router.post("/:id/blocks", async (req, res) => {
     res.status(201).json({ activity_block: block });
   } catch (err) {
     console.error("POST /trips/:id/blocks error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- POST /trips/:id/curate-itinerary ---
+router.post("/:id/curate-itinerary", async (req, res) => {
+  try {
+    const trip = await getTripById(req.user, req.params.id);
+    const activityBlocks = await curateTripItinerary(req.user, trip, {
+      replaceExisting: !!req.body?.replace_existing,
+    });
+    res.status(201).json({ activity_blocks: activityBlocks });
+  } catch (err) {
+    console.error("POST /trips/:id/curate-itinerary error:", err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -40,7 +40,7 @@ async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.error || `Backend request failed: ${response.status}`);
+    throw new Error(payload?.error || `Backend request failed: ${response.status} (${path})`);
   }
 
   return payload as T;
@@ -82,6 +82,16 @@ export async function createActivityBlockViaBackend(
   return backendFetch<{ activity_block: ActivityBlock }>(`/trips/${tripId}/blocks`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function curateTripItineraryViaBackend(
+  tripId: string,
+  payload?: { replace_existing?: boolean }
+) {
+  return backendFetch<{ activity_blocks: ActivityBlock[] }>(`/trips/${tripId}/curate-itinerary`, {
+    method: 'POST',
+    body: JSON.stringify(payload || {}),
   });
 }
 

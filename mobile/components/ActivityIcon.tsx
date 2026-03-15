@@ -15,6 +15,7 @@ const iconMap: Record<ActivityType, React.ComponentProps<typeof Feather>['name']
   spa: 'droplet',
   park: 'sun',
   beach: 'sunrise',
+  mindful: 'heart',
   other: 'map-pin',
 };
 
