@@ -1,8 +1,8 @@
-TripPulse — Agentic Wellness Travel Companion
+Roamio — Agentic Wellness Travel Companion
 GenAI Genesis Hackathon | Sun Life Best Health Care Hack Using Agentic AI
 
 Project Vision
-TripPulse is a mobile wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, TripPulse treats your physical and mental state as first-class data — building a personal fatigue profile over time and proactively adapting your plans before burnout happens.
+Roamio is a mobile wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, Roamio treats your physical and mental state as first-class data — building a personal fatigue profile over time and proactively adapting your plans before burnout happens.
 
 Agentic AI Architecture
 This is the core of the GenAI story. Gemini does not just answer a single prompt — it runs a multi-step agent loop with distinct responsibilities:
@@ -332,7 +332,7 @@ Concrete physical health impact — prevents overexertion for anxious or first-t
 
 
 PROGRESS.md Template (seed this at project start)
-markdown# TripPulse — Build Progress
+markdown# Roamio — Build Progress
 
 ## Done
 - [ ] Project scaffolded
@@ -346,11 +346,11 @@ markdown# TripPulse — Build Progress
 ## Blockers
 See BLOCKERS.md
 
-Feed this to Claude Code and tell it to start at Phase 1, Step 1 and confirm each step compiles before moving forward. The agent prompt contracts in particular will save you a ton of back-and-forth during the hackathon.rewrite but mention that it should start with a web app we will move it over to like mobile, react native later (so it should be easily transferrable). further, if some parts of the idea are bad and not sound you can polish and refine.10:34 AMTripPulse — Agentic Wellness Travel Companion
+Feed this to Claude Code and tell it to start at Phase 1, Step 1 and confirm each step compiles before moving forward. The agent prompt contracts in particular will save you a ton of back-and-forth during the hackathon.rewrite but mention that it should start with a web app we will move it over to like mobile, react native later (so it should be easily transferrable). further, if some parts of the idea are bad and not sound you can polish and refine.10:34 AMRoamio — Agentic Wellness Travel Companion
 GenAI Genesis Hackathon | Sun Life Best Health Care Hack Using Agentic AI
 
 Project Vision
-TripPulse is a wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, TripPulse treats your physical and mental state as first-class data — adapting your plans before burnout happens, not after.
+Roamio is a wellness companion for travellers that uses agentic AI to monitor energy levels throughout a trip and dynamically reroute the day's itinerary in real time. Unlike static travel apps, Roamio treats your physical and mental state as first-class data — adapting your plans before burnout happens, not after.
 Hackathon build target: React web app (Next.js). All logic, data models, and AI contracts are designed for a clean lift to Expo + React Native after the hackathon. Shared business logic lives in framework-agnostic utility files; only the UI layer is web-specific.
 
 Refined Scope Decisions

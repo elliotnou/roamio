@@ -117,7 +117,7 @@ export default function NewTripPage() {
           {/* AI hint */}
           <div className="bg-[#e8ede4] rounded-2xl p-4">
             <p className="text-[#5a6b4e] text-sm leading-relaxed">
-              After creating your trip, you can add activities. TripPulse will automatically estimate energy costs and adapt your itinerary in real time.
+              After creating your trip, you can add activities. Roamio will automatically estimate energy costs and adapt your itinerary in real time.
             </p>
           </div>
 

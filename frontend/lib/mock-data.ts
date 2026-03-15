@@ -2,7 +2,7 @@ import type { User, Trip, ActivityBlock, CheckIn, ActivitySuggestion } from '@/t
 
 export const MOCK_USER: User = {
   id: 'user-001',
-  email: 'alex@trippulse.app',
+  email: 'alex@roamio.app',
   display_name: 'Alex',
   created_at: '2024-01-15T08:00:00Z',
 };

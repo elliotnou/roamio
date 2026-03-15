@@ -167,7 +167,7 @@ export default function ItineraryPage() {
           {/* AI note */}
           <div className="bg-[#e8ede4] rounded-2xl p-4">
             <p className="text-[#5a6b4e] text-sm leading-relaxed">
-              Our AI will automatically classify this activity and estimate its energy demand so TripPulse can adapt your day in real time.
+              Our AI will automatically classify this activity and estimate its energy demand so Roamio can adapt your day in real time.
             </p>
           </div>
 

@@ -31,7 +31,7 @@ export default function SignupPage() {
         {/* Logo */}
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-[#8B9A7B] tracking-tight">
-            TripPulse
+            Roamio
           </h1>
           <p className="text-[#6B6B6B] mt-2 text-sm">Start your wellness journey</p>
         </div>

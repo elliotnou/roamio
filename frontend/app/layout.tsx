@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TripPulse — Your Agentic Wellness Travel Companion",
+  title: "Roamio — Your Agentic Wellness Travel Companion",
   description:
-    "TripPulse adapts your travel itinerary in real time based on how you feel. Check in, get energy-aware suggestions, and travel at your own pace.",
+    "Roamio adapts your travel itinerary in real time based on how you feel. Check in, get energy-aware suggestions, and travel at your own pace.",
   keywords: ["travel", "wellness", "itinerary", "AI", "travel planner"],
 };
 
