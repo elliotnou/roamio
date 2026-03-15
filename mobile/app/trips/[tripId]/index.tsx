@@ -869,16 +869,7 @@ export default function TripDetailScreen() {
               <Text style={s.tripDates}>{formatDate(trip.start_date)} - {formatDate(trip.end_date)}</Text>
               <View style={s.dayPill}><Text style={s.dayPillText}>{dayCount}d</Text></View>
             </View>
-            <Pressable
-              style={[s.curateBtn, isCurating && s.curateBtnDisabled]}
-              onPress={handleCuratePress}
-              disabled={isCurating}
-            >
-              <Feather name="cpu" size={13} color={isCurating ? C.placeholder : C.sageDark} />
-              <Text style={[s.curateBtnText, isCurating && s.curateBtnTextDisabled]}>
-                {isCurating ? 'Curating...' : 'Curate with Gemini'}
-              </Text>
-            </Pressable>
+
           </View>
         </View>
 
@@ -983,20 +974,7 @@ const s = StyleSheet.create({
   tripDates: { fontSize: 15, fontFamily: F.medium, color: C.secondary },
   dayPill: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   dayPillText: { fontSize: 12, fontFamily: F.bold, color: C.secondary },
-  curateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.sage + '18',
-    borderWidth: 1,
-    borderColor: C.sage + '35',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  curateBtnDisabled: { opacity: 0.65 },
-  curateBtnText: { fontSize: 12, fontFamily: F.semiBold, color: C.sageDark },
-  curateBtnTextDisabled: { color: C.placeholder },
+
   tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
   tab: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
   tabActive: { backgroundColor: C.charcoal },
