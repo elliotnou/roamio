@@ -161,6 +161,7 @@ export default function DashboardScreen() {
               </Pressable>
             )}
           </View>
+
         </LinearGradient>
 
         {activeTrip ? (
@@ -400,4 +401,5 @@ const s = StyleSheet.create({
   doneText: { fontSize: 12, fontFamily: F.medium, color: C.eHighText },
   checkinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 16, marginTop: 12 },
   checkinBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
+
 });

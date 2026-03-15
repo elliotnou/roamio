@@ -15,7 +15,9 @@ import {
   createCheckInViaBackend,
   requestSuggestionsFromBackend,
   updateCheckInOutcomeViaBackend,
+  curateTripItineraryViaBackend,
 } from '../lib/backend';
+import { callGemini } from '../lib/gemini';
 import { resolvePlace } from '../lib/agent/resolve';
 import { classifyCheckIn } from '../lib/agent/classifier';
 import { rankAlternatives } from '../lib/agent/ranker';
@@ -70,6 +72,380 @@ function sortActivityBlocks(blocks: ActivityBlock[]): ActivityBlock[] {
 
     return a.place_name.localeCompare(b.place_name);
   });
+}
+
+const CURATED_TYPE: ActivityType = 'mindful';
+const CURATED_TIME_SLOTS: ReadonlyArray<readonly [string, string]> = [
+  ['08:00', '09:00'],
+  ['09:30', '11:00'],
+  ['11:30', '13:00'],
+  ['13:30', '14:30'],
+  ['15:00', '16:30'],
+  ['17:00', '18:30'],
+  ['19:00', '20:30'],
+  ['20:30', '21:30'],
+];
+
+const MOBILE_CLOSED_STATUSES = new Set(['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY']);
+const VIBE_QUERY_TEMPLATES: Record<string, string[]> = {
+  relaxing: [
+    'quiet parks and gardens in {destination}',
+    'wellness spa in {destination}',
+    'calm tea house cafe in {destination}',
+  ],
+  adventure: [
+    'hiking trail in {destination}',
+    'outdoor viewpoint in {destination}',
+    'walking tour attraction in {destination}',
+  ],
+  culture: [
+    'museum in {destination}',
+    'art gallery in {destination}',
+    'historic landmark in {destination}',
+  ],
+  foodie: [
+    'local restaurant in {destination}',
+    'food market in {destination}',
+    'popular cafe in {destination}',
+  ],
+};
+
+interface DestinationCandidate {
+  place_id: string;
+  place_name: string;
+  address: string;
+  maps_url: string;
+  rating: number | null;
+  user_rating_count: number | null;
+  types: string[];
+  vibe_hint: string;
+  resolved_lat: number | null;
+  resolved_lng: number | null;
+}
+
+interface GeminiCuratedActivity {
+  place_id?: string;
+  description?: string;
+  start_time?: string;
+  end_time?: string;
+  energy_cost_estimate?: number;
+}
+
+interface GeminiCuratedDay {
+  day_index?: number;
+  activities?: GeminiCuratedActivity[];
+}
+
+interface GeminiCuratedPlan {
+  days?: GeminiCuratedDay[];
+}
+
+function getTripDayCount(startDate: string, endDate: string): number {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const diff = end.getTime() - start.getTime();
+  if (Number.isNaN(diff)) return 1;
+  return Math.max(1, Math.floor(diff / 86400000) + 1);
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function normalizeClock(timeValue: unknown, fallback: string): string {
+  if (typeof timeValue !== 'string') return fallback;
+  const match = timeValue.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return fallback;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    return fallback;
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function toTripTimestamp(baseDate: string, dayIndex: number, hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const date = new Date(`${baseDate}T00:00:00`);
+  date.setDate(date.getDate() + dayIndex);
+  date.setHours(h || 0, m || 0, 0, 0);
+  return date.toISOString();
+}
+
+function getSelectedVibes(trip: Trip): string[] {
+  const selected = (trip.travel_vibes || []).filter((v) => !!VIBE_QUERY_TEMPLATES[v]);
+  return selected.length > 0 ? selected : ['relaxing', 'culture', 'foodie'];
+}
+
+function buildVibeQueries(destination: string, vibes: string[]): Array<{ query: string; vibe_hint: string }> {
+  const queries: Array<{ query: string; vibe_hint: string }> = [];
+  for (const vibe of vibes) {
+    const templates = VIBE_QUERY_TEMPLATES[vibe] || [];
+    for (const template of templates) {
+      queries.push({
+        query: template.replace('{destination}', destination),
+        vibe_hint: vibe,
+      });
+    }
+  }
+  return queries.slice(0, 8);
+}
+
+async function searchPlacesTextOnMobile(query: string, vibeHint: string): Promise<DestinationCandidate[]> {
+  const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
+  if (!key) return [];
+
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.businessStatus,places.googleMapsUri',
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        languageCode: 'en',
+        maxResultCount: 12,
+      }),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const json = (await response.json()) as {
+      places?: Array<{
+        id?: string;
+        displayName?: { text?: string };
+        formattedAddress?: string;
+        location?: { latitude?: number; longitude?: number };
+        rating?: number;
+        userRatingCount?: number;
+        types?: string[];
+        businessStatus?: string;
+        googleMapsUri?: string;
+      }>;
+    };
+
+    const places = json.places || [];
+    return places
+      .filter((place) => {
+        if (!place.id || !place.displayName?.text) return false;
+        if (MOBILE_CLOSED_STATUSES.has(place.businessStatus || '')) return false;
+        return true;
+      })
+      .map((place) => ({
+        place_id: place.id || '',
+        place_name: place.displayName?.text || '',
+        address: place.formattedAddress || '',
+        maps_url: place.googleMapsUri || `https://maps.google.com/?q=${encodeURIComponent(place.displayName?.text || '')}`,
+        rating: typeof place.rating === 'number' ? place.rating : null,
+        user_rating_count: typeof place.userRatingCount === 'number' ? place.userRatingCount : null,
+        types: Array.isArray(place.types) ? place.types : [],
+        vibe_hint: vibeHint,
+        resolved_lat: typeof place.location?.latitude === 'number' ? place.location.latitude : null,
+        resolved_lng: typeof place.location?.longitude === 'number' ? place.location.longitude : null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchDestinationPlaceCandidates(trip: Trip): Promise<DestinationCandidate[]> {
+  const vibes = getSelectedVibes(trip);
+  const queries = buildVibeQueries(trip.destination, vibes);
+  if (queries.length === 0) return [];
+
+  const resultSets = await Promise.all(
+    queries.map((item) => searchPlacesTextOnMobile(item.query, item.vibe_hint))
+  );
+
+  const byId = new Map<string, DestinationCandidate>();
+  for (const candidate of resultSets.flat()) {
+    if (!candidate.place_id) continue;
+    const current = byId.get(candidate.place_id);
+    if (!current || (candidate.rating || 0) >= (current.rating || 0)) {
+      byId.set(candidate.place_id, candidate);
+    }
+  }
+
+  return Array.from(byId.values())
+    .sort((a, b) => {
+      const ratingDiff = (b.rating || 0) - (a.rating || 0);
+      if (ratingDiff !== 0) return ratingDiff;
+      return (b.user_rating_count || 0) - (a.user_rating_count || 0);
+    })
+    .slice(0, 36);
+}
+
+function buildCandidateDescription(candidate: DestinationCandidate): string {
+  const shortAddress = candidate.address ? candidate.address.split(',').slice(0, 2).join(',').trim() : '';
+  const ratingText =
+    typeof candidate.rating === 'number'
+      ? `Rated ${candidate.rating.toFixed(1)}`
+      : 'Well-regarded locally';
+  const locationText = shortAddress ? ` in ${shortAddress}` : '';
+  return `${ratingText}${locationText}, chosen for a ${candidate.vibe_hint}-friendly pace.`.slice(0, 220);
+}
+
+function buildDeterministicCuratedRows(trip: Trip, candidates: DestinationCandidate[], targetDayIndex: number = 0, slotCount: number = 5): Omit<ActivityBlock, 'id'>[] {
+  const vibes = getSelectedVibes(trip);
+  const rows: Omit<ActivityBlock, 'id'>[] = [];
+  let cursor = 0;
+  const usedToday = new Set<string>();
+
+  for (let slotIndex = 0; slotIndex < Math.min(slotCount, CURATED_TIME_SLOTS.length); slotIndex += 1) {
+    const targetVibe = vibes[(targetDayIndex + slotIndex) % vibes.length];
+    let selected: DestinationCandidate | null = null;
+
+    for (let probe = 0; probe < candidates.length; probe += 1) {
+      const candidate = candidates[(cursor + probe) % candidates.length];
+      if (!candidate || usedToday.has(candidate.place_id)) continue;
+      if (candidate.vibe_hint === targetVibe) {
+        selected = candidate;
+        cursor = (cursor + probe + 1) % candidates.length;
+        break;
+      }
+    }
+
+    if (!selected) {
+      for (let probe = 0; probe < candidates.length; probe += 1) {
+        const candidate = candidates[(cursor + probe) % candidates.length];
+        if (candidate && !usedToday.has(candidate.place_id)) {
+          selected = candidate;
+          cursor = (cursor + probe + 1) % candidates.length;
+          break;
+        }
+      }
+    }
+
+    if (!selected) break;
+    usedToday.add(selected.place_id);
+    const [start, end] = CURATED_TIME_SLOTS[slotIndex];
+
+    rows.push({
+      trip_id: trip.id,
+      day_index: targetDayIndex,
+      place_name: selected.place_name,
+      resolved_place_id: selected.place_id,
+      resolved_place_name: buildCandidateDescription(selected),
+      resolved_lat: selected.resolved_lat,
+      resolved_lng: selected.resolved_lng,
+      activity_type: CURATED_TYPE,
+      energy_cost_estimate: clampInt(estimateEnergyForAgentType(mapGoogleTypesToAgentType(selected.types)), 1, 10, 4),
+      start_time: toTripTimestamp(trip.start_date, targetDayIndex, start),
+      end_time: toTripTimestamp(trip.start_date, targetDayIndex, end),
+    });
+  }
+
+  return rows;
+}
+
+function buildMobileCurationPrompt(trip: Trip, candidates: DestinationCandidate[], pace: 'light' | 'balanced' | 'packed' = 'balanced', dayIndex: number = 0): string {
+  const vibeText = getSelectedVibes(trip).join(', ');
+  const candidateLines = candidates
+    .map((candidate) => {
+      const rating = typeof candidate.rating === 'number' ? candidate.rating.toFixed(1) : 'N/A';
+      const type = mapAgentTypeToActivityType(mapGoogleTypesToAgentType(candidate.types));
+      return `- place_id="${candidate.place_id}", name="${candidate.place_name}", vibe="${candidate.vibe_hint}", type="${type}", rating="${rating}", address="${candidate.address}"`;
+    })
+    .join('\n');
+
+  const paceConfig = {
+    light: { min: 3, max: 4, energy: '1-4', meals: 1, desc: 'Relaxed — 3-4 activities, generous breaks, gentle energy.' },
+    balanced: { min: 5, max: 6, energy: '2-6', meals: 2, desc: 'Comfortable mix — 5-6 activities with 2 meals, sightseeing, and buffer time.' },
+    packed: { min: 7, max: 8, energy: '2-8', meals: 3, desc: 'Jam-packed — 7-8 activities filling the whole day: breakfast, lunch, dinner, major sights, hidden gems, and experiences.' },
+  }[pace];
+
+  return `You are building a SINGLE DAY itinerary for a traveler visiting ${trip.destination}. Use ONLY these real place_ids.
+
+PACE: ${pace.toUpperCase()} — ${paceConfig.desc}
+
+Return JSON only — a flat array of activities for this ONE day:
+{
+  "days": [
+    {
+      "day_index": ${dayIndex},
+      "activities": [
+        {
+          "place_id": "string",
+          "start_time": "HH:MM",
+          "end_time": "HH:MM",
+          "description": "short factual description",
+          "energy_cost_estimate": 3
+        }
+      ]
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Generate EXACTLY ONE day with day_index ${dayIndex}.
+- You MUST include ${paceConfig.min} to ${paceConfig.max} activities. Do NOT generate fewer.
+- ${paceConfig.meals} meal(s) required — use restaurants/cafes from the list (breakfast ~08:00-09:00, lunch ~12:00-13:30, dinner ~19:00-20:30).
+- Fill the day from 08:00 to 21:30 with varied durations: quick stops (30-45 min), medium visits (1-1.5h), longer experiences (2h).
+- Mix activity TYPES: meals, museums, parks, landmarks, markets, cafes — real variety, not all the same category.
+- Times in 24h HH:MM format, strictly non-overlapping, in chronological order.
+- Activities should be geographically sensible — nearby each other, not zig-zagging.
+- Energy costs: ${paceConfig.energy} range.
+- Use ONLY listed place_ids. Each place_id used at most once.
+- Vibes the traveler wants: ${vibeText}
+
+Candidates (pick from these):
+${candidateLines}`;
+}
+
+function normalizeGeminiCuratedRows(
+  plan: GeminiCuratedPlan,
+  trip: Trip,
+  candidatesById: Map<string, DestinationCandidate>,
+  targetDayIndex?: number
+): Omit<ActivityBlock, 'id'>[] {
+  const rows: Omit<ActivityBlock, 'id'>[] = [];
+  const rawDays = Array.isArray(plan?.days) ? plan.days : [];
+  const usedGlobal = new Set<string>();
+
+  for (const day of rawDays) {
+    const dayIndex = Number(day?.day_index ?? 0);
+    if (targetDayIndex != null && dayIndex !== targetDayIndex) continue;
+
+    const activities = Array.isArray(day?.activities) ? day.activities : [];
+
+    activities.forEach((activity, slotIndex) => {
+      const candidate = activity?.place_id ? candidatesById.get(activity.place_id) : null;
+      if (!candidate || usedGlobal.has(candidate.place_id)) return;
+      const fallbackSlot = CURATED_TIME_SLOTS[Math.min(slotIndex, CURATED_TIME_SLOTS.length - 1)];
+      const start = normalizeClock(activity?.start_time, fallbackSlot[0]);
+      const end = normalizeClock(activity?.end_time, fallbackSlot[1]);
+      const description = buildCandidateDescription(candidate);
+      usedGlobal.add(candidate.place_id);
+
+      rows.push({
+        trip_id: trip.id,
+        day_index: dayIndex,
+        place_name: candidate.place_name,
+        resolved_place_id: candidate.place_id,
+        resolved_place_name: description,
+        resolved_lat: candidate.resolved_lat,
+        resolved_lng: candidate.resolved_lng,
+        activity_type: CURATED_TYPE,
+        energy_cost_estimate: clampInt(
+          activity?.energy_cost_estimate,
+          1,
+          10,
+          estimateEnergyForAgentType(mapGoogleTypesToAgentType(candidate.types))
+        ),
+        start_time: toTripTimestamp(trip.start_date, dayIndex, start),
+        end_time: toTripTimestamp(trip.start_date, dayIndex, end),
+      });
+    });
+  }
+
+  return rows;
 }
 
 function mapSuggestion(suggestion: any): ActivitySuggestion {
@@ -240,6 +616,10 @@ interface TripStore {
   setTripDestinationImage: (tripId: string, imageUrl: string) => Promise<void>;
   deleteTrip: (tripId: string) => Promise<boolean>;
   addActivityBlock: (block: Omit<ActivityBlock, 'id'>) => Promise<ActivityBlock | null>;
+  generateCuratedItinerary: (
+    tripId: string,
+    options?: { replaceExisting?: boolean; pace?: 'light' | 'balanced' | 'packed'; dayIndex?: number }
+  ) => Promise<ActivityBlock[] | null>;
   deleteActivityBlock: (blockId: string, tripId: string) => Promise<boolean>;
   updateActivityBlock: (blockId: string, updates: Partial<Pick<ActivityBlock, 'place_name' | 'start_time' | 'end_time' | 'activity_type' | 'energy_cost_estimate'>>) => Promise<ActivityBlock | null>;
   startCheckIn: (params: {
@@ -253,6 +633,21 @@ interface TripStore {
     selected_place_id?: string | null;
     selected_place_name?: string | null;
   }) => Promise<void>;
+  compactifyDay: (tripId: string, dayIndex: number) => Promise<CompactifyResult | null>;
+}
+
+export interface CompactifyItem {
+  id: string;
+  place_name: string;
+  start_time: string;
+  end_time: string;
+  action: 'keep' | 'drop';
+  reason: string;
+}
+
+export interface CompactifyResult {
+  items: CompactifyItem[];
+  summary: string;
 }
 
 export const useTripStore = create<TripStore>((set, get) => ({
@@ -540,6 +935,117 @@ export const useTripStore = create<TripStore>((set, get) => ({
           });
           return normalized;
       }
+      return null;
+    }
+  },
+
+  generateCuratedItinerary: async (tripId, options) => {
+    const replaceExisting = !!options?.replaceExisting;
+    const pace = options?.pace || 'balanced';
+    const dayIndex = options?.dayIndex ?? 0;
+    const slotCount = { light: 4, balanced: 6, packed: 8 }[pace];
+    const trip = get().trips.find((item) => item.id === tripId);
+    if (!trip) return null;
+
+    const commitGeneratedBlocks = (blocks: any[]) => {
+      const normalized = (blocks || []).map(normalizeActivityBlock);
+      set((state) => {
+        const currentTripBlocks = state.activityBlocks[tripId] || [];
+        const existingIds = new Set(currentTripBlocks.map((item) => item.id));
+        const merged = replaceExisting
+          ? sortActivityBlocks(normalized)
+          : sortActivityBlocks([...currentTripBlocks, ...normalized]);
+
+        return {
+          activityBlocks: {
+            ...state.activityBlocks,
+            [tripId]: merged,
+          },
+          checkIns: replaceExisting
+            ? state.checkIns.filter((checkIn) => !existingIds.has(checkIn.activity_block_id))
+            : state.checkIns,
+        };
+      });
+      return normalized;
+    };
+
+    try {
+      const { activity_blocks } = await curateTripItineraryViaBackend(tripId, {
+        replace_existing: replaceExisting,
+      });
+      if (!Array.isArray(activity_blocks) || activity_blocks.length === 0) {
+        throw new Error('No activities returned from backend curation');
+      }
+      return commitGeneratedBlocks(activity_blocks);
+    } catch (backendError) {
+      console.warn('Backend itinerary curation unavailable, using direct fallback:', backendError);
+    }
+
+    try {
+      const candidates = await fetchDestinationPlaceCandidates(trip);
+      if (candidates.length === 0) {
+        throw new Error('No Google Places candidates found for this destination.');
+      }
+      let rowsToInsert = buildDeterministicCuratedRows(trip, candidates, dayIndex, slotCount);
+
+      try {
+        const geminiPlan = await callGemini<GeminiCuratedPlan>(buildMobileCurationPrompt(trip, candidates, pace, dayIndex));
+        const geminiRows = normalizeGeminiCuratedRows(
+          geminiPlan,
+          trip,
+          new Map(candidates.map((candidate) => [candidate.place_id, candidate])),
+          dayIndex
+        );
+        if (geminiRows.length > 0) {
+          rowsToInsert = geminiRows;
+        }
+      } catch (geminiError) {
+        console.warn('Mobile Gemini candidate curation failed, using deterministic real-place plan:', geminiError);
+      }
+
+      if (replaceExisting) {
+        const { error: deleteError } = await supabase
+          .from('activity_blocks')
+          .delete()
+          .eq('trip_id', tripId);
+        if (deleteError) {
+          throw new Error(`Failed clearing existing blocks: ${deleteError.message}`);
+        }
+      } else {
+        // Append mode: filter out duplicates and time overlaps with existing blocks
+        const existingBlocks = get().activityBlocks[tripId] || [];
+        const existingPlaceIds = new Set(existingBlocks.map((b) => b.resolved_place_id).filter(Boolean));
+        rowsToInsert = rowsToInsert.filter((row) => {
+          // Skip if same place already in itinerary
+          if (row.resolved_place_id && existingPlaceIds.has(row.resolved_place_id)) return false;
+          // Skip if time overlaps with an existing block on the same day
+          const rowStart = toClockMinutes(row.start_time);
+          const rowEnd = toClockMinutes(row.end_time);
+          const sameDayExisting = existingBlocks.filter((b) => b.day_index === row.day_index);
+          const overlaps = sameDayExisting.some((b) => {
+            const bStart = toClockMinutes(b.start_time);
+            const bEnd = toClockMinutes(b.end_time);
+            return rowStart < bEnd && rowEnd > bStart;
+          });
+          return !overlaps;
+        });
+      }
+
+      if (rowsToInsert.length === 0) {
+        return commitGeneratedBlocks([]);
+      }
+
+      const { data, error } = await supabase
+        .from('activity_blocks')
+        .insert(rowsToInsert)
+        .select('*');
+      if (error) {
+        throw new Error(`Fallback itinerary insert failed: ${error.message}`);
+      }
+
+      return commitGeneratedBlocks(data || []);
+    } catch (fallbackError) {
+      console.error('generateCuratedItinerary failed:', fallbackError);
       return null;
     }
   },
@@ -839,5 +1345,101 @@ export const useTripStore = create<TripStore>((set, get) => ({
       set({ suggestions: [], latestCheckInId: null });
     }
 
+  },
+
+  compactifyDay: async (tripId: string, dayIndex: number) => {
+    const { activityBlocks, trips, checkIns } = get();
+    const trip = trips.find((t) => t.id === tripId);
+    if (!trip) return null;
+
+    const allBlocks = sortActivityBlocks(activityBlocks[tripId] || []);
+    const dayBlocks = allBlocks.filter((b) => b.day_index === dayIndex);
+    if (dayBlocks.length <= 1) return null;
+
+    const tripCheckIns = checkIns.filter((c) =>
+      allBlocks.some((b) => b.id === c.activity_block_id)
+    );
+    const avgEnergy = tripCheckIns.length > 0
+      ? tripCheckIns.reduce((sum, c) => sum + c.energy_level, 0) / tripCheckIns.length
+      : 5;
+
+    const activitiesJson = dayBlocks.map((b) => ({
+      id: b.id,
+      place_name: b.place_name,
+      activity_type: b.activity_type,
+      start_time: b.start_time,
+      end_time: b.end_time,
+      energy_cost_estimate: b.energy_cost_estimate ?? 5,
+    }));
+
+    const prompt = `You are Roamio AI, a travel wellness assistant helping an overwhelmed traveler simplify their day.
+
+CONTEXT:
+- Destination: ${trip.destination}
+- Travel vibes: ${(trip.travel_vibes ?? []).join(', ') || 'not specified'}
+- Day ${dayIndex + 1} of their trip
+- Average energy level across check-ins: ${avgEnergy.toFixed(1)}/10
+- Number of recent low-energy check-ins: ${tripCheckIns.filter((c) => c.energy_level <= 4).length}
+
+TODAY'S ACTIVITIES (${dayBlocks.length} total):
+${JSON.stringify(activitiesJson, null, 2)}
+
+TASK:
+The traveler is feeling overwhelmed. Simplify their day by deciding which activities to KEEP and which to DROP.
+
+Rules:
+- Keep the activities that best match their travel vibes and are most essential to the destination experience
+- Drop activities that are high-energy, redundant, or less important
+- Aim to keep roughly 50-70% of activities — enough to still have a great day without burnout
+- Never drop ALL activities
+- Be warm and human in your reasoning — this person is stressed in a foreign country
+
+Return ONLY valid JSON in this exact format:
+{
+  "items": [
+    { "id": "<activity id>", "place_name": "<name>", "action": "keep", "reason": "short reason" },
+    { "id": "<activity id>", "place_name": "<name>", "action": "drop", "reason": "short reason" }
+  ],
+  "summary": "A warm 1-2 sentence message explaining the simplified day, with a touch of humor or reassurance"
+}`;
+
+    try {
+      const result = await callGemini<CompactifyResult>(prompt);
+      if (!result?.items || !Array.isArray(result.items)) return null;
+
+      // Merge times from actual blocks
+      const enriched: CompactifyItem[] = result.items.map((item) => {
+        const block = dayBlocks.find((b) => b.id === item.id);
+        return {
+          ...item,
+          start_time: block?.start_time ?? '',
+          end_time: block?.end_time ?? '',
+        };
+      });
+
+      return { items: enriched, summary: result.summary || '' };
+    } catch (err) {
+      console.error('[compactifyDay] Gemini failed:', err);
+      // Fallback: drop the highest energy-cost activities
+      const sorted = [...dayBlocks].sort(
+        (a, b) => (b.energy_cost_estimate ?? 5) - (a.energy_cost_estimate ?? 5)
+      );
+      const dropCount = Math.max(1, Math.floor(sorted.length * 0.35));
+      const dropIds = new Set(sorted.slice(0, dropCount).map((b) => b.id));
+
+      const items: CompactifyItem[] = dayBlocks.map((b) => ({
+        id: b.id,
+        place_name: b.place_name,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        action: dropIds.has(b.id) ? 'drop' as const : 'keep' as const,
+        reason: dropIds.has(b.id) ? 'High energy cost — save it for a better day' : 'Fits your vibe',
+      }));
+
+      return {
+        items,
+        summary: "We trimmed the most draining activities so you can breathe. You've still got a great day ahead.",
+      };
+    }
   },
 }));

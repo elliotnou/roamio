@@ -14,7 +14,7 @@ export class GeminiClientError extends Error {
   }
 }
 
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**
@@ -47,7 +47,7 @@ export async function callGemini<T>(
     generationConfig: {
       temperature: 0.2,
       topP: 0.8,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 4096,
     },
   };
 
