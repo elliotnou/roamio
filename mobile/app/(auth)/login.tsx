@@ -37,10 +37,9 @@ export default function LoginScreen() {
         return;
       }
       
-      console.log('Sign in success, fetching data...');
-      await fetchData();
-      console.log('Data fetched, navigating...');
-      router.push('/(tabs)');
+      console.log('Sign in success, navigating...');
+      fetchData(); // fire-and-forget; tabs will show data when ready
+      router.replace('/(tabs)');
     } catch (e: any) {
       console.error('Login exception:', e);
       setError(e.message || 'Something went wrong');
