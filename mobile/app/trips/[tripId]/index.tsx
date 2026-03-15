@@ -869,16 +869,7 @@ export default function TripDetailScreen() {
               <Text style={s.tripDates}>{formatDate(trip.start_date)} - {formatDate(trip.end_date)}</Text>
               <View style={s.dayPill}><Text style={s.dayPillText}>{dayCount}d</Text></View>
             </View>
-            <Pressable
-              style={[s.curateBtn, isCurating && s.curateBtnDisabled]}
-              onPress={handleCuratePress}
-              disabled={isCurating}
-            >
-              <Feather name="cpu" size={13} color={isCurating ? C.placeholder : C.sageDark} />
-              <Text style={[s.curateBtnText, isCurating && s.curateBtnTextDisabled]}>
-                {isCurating ? 'Curating...' : 'Curate with Gemini'}
-              </Text>
-            </Pressable>
+
           </View>
         </View>
 
@@ -915,11 +906,27 @@ export default function TripDetailScreen() {
           )}
         </View>
 
-        {/* Add button */}
-        <View style={{ paddingHorizontal: 20, marginTop: 28 }}>
-          <Pressable style={s.addBtn} onPress={() => router.push(`/trips/${tripId}/itinerary` as never)}>
-            <Feather name="plus" size={16} color={C.white} />
-            <Text style={s.addBtnText}>Add Activity</Text>
+        {/* Action bar */}
+        <View style={s.actionBar}>
+          <Pressable style={s.actionItem} onPress={() => router.push(`/trips/${tripId}/itinerary` as never)}>
+            <View style={s.actionCircle}>
+              <Feather name="plus" size={18} color={C.charcoal} />
+            </View>
+            <Text style={s.actionLabel}>Add Activity</Text>
+          </Pressable>
+          {blocks.filter(b => b.day_index === activeDay).length >= 3 && (
+            <Pressable style={s.actionItem} onPress={() => router.push(`/checkin/compactify?tripId=${tripId}&dayIndex=${activeDay}` as never)}>
+              <View style={[s.actionCircle, s.actionCircleSage]}>
+                <Feather name="minimize-2" size={18} color={C.white} />
+              </View>
+              <Text style={s.actionLabel}>Simplify Day</Text>
+            </Pressable>
+          )}
+          <Pressable style={s.actionItem} onPress={() => router.push(`/checkin/generate?tripId=${tripId}&dayIndex=${activeDay}` as never)}>
+            <View style={[s.actionCircle, s.actionCircleDark]}>
+              <Feather name="zap" size={18} color={C.white} />
+            </View>
+            <Text style={s.actionLabel}>Curate with Gemini</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -967,28 +974,28 @@ const s = StyleSheet.create({
   tripDates: { fontSize: 15, fontFamily: F.medium, color: C.secondary },
   dayPill: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
   dayPillText: { fontSize: 12, fontFamily: F.bold, color: C.secondary },
-  curateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.sage + '18',
-    borderWidth: 1,
-    borderColor: C.sage + '35',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  curateBtnDisabled: { opacity: 0.65 },
-  curateBtnText: { fontSize: 12, fontFamily: F.semiBold, color: C.sageDark },
-  curateBtnTextDisabled: { color: C.placeholder },
+
   tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 8 },
   tab: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 999, backgroundColor: C.white },
   tabActive: { backgroundColor: C.charcoal },
   tabText: { fontSize: 14, fontFamily: F.semiBold, color: C.secondary },
   tabTextActive: { color: C.white },
-  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 16 },
-  addBtnText: { color: C.white, fontSize: 16, fontFamily: F.semiBold },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+
+  actionBar: {
+    flexDirection: 'row', justifyContent: 'center', gap: 24,
+    paddingHorizontal: 20, paddingVertical: 20,
+    backgroundColor: C.white, borderRadius: 20, marginHorizontal: 20, marginTop: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 4,
+  },
+  actionItem: { alignItems: 'center', gap: 6 },
+  actionCircle: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center',
+  },
+  actionCircleSage: { backgroundColor: C.sage },
+  actionCircleDark: { backgroundColor: C.charcoal },
+  actionLabel: { fontSize: 11, fontFamily: F.medium, color: C.secondary },
 });
 
 const il = StyleSheet.create({

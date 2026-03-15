@@ -7,47 +7,14 @@ import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 import {
   getCommunitySupportCategories,
-  requestCommunitySupportPlaces,
-} from '../../lib/backend';
+  findCommunitySupportPlaces,
+} from '../../lib/communitySupport';
 import type {
   CommunityNeedCategory,
   CommunitySupportCategory,
   CommunitySupportPlace,
   CommunityFallbackResource,
 } from '../../types';
-
-const DEFAULT_CATEGORIES: CommunitySupportCategory[] = [
-  {
-    id: 'food_and_water',
-    label: 'Food & Water',
-    description: 'Find food and groceries nearby.',
-    icon: 'coffee',
-  },
-  {
-    id: 'medication',
-    label: 'Medication',
-    description: 'Find pharmacies and urgent medical support.',
-    icon: 'plus-square',
-  },
-  {
-    id: 'safe_rest',
-    label: 'Safe Place to Rest',
-    description: 'Find calmer spaces to recover.',
-    icon: 'moon',
-  },
-  {
-    id: 'mental_health',
-    label: 'Mental Health Support',
-    description: 'Find supportive services nearby.',
-    icon: 'heart',
-  },
-  {
-    id: 'transit_help',
-    label: 'Transit Help',
-    description: 'Find stations and transit support.',
-    icon: 'navigation',
-  },
-];
 
 function formatRating(place: CommunitySupportPlace): string {
   if (place.rating == null) return 'N/A';
@@ -61,7 +28,7 @@ function openStatus(place: CommunitySupportPlace): string {
 }
 
 export default function CommunitySupportScreen() {
-  const [categories, setCategories] = useState<CommunitySupportCategory[]>(DEFAULT_CATEGORIES);
+  const [categories] = useState<CommunitySupportCategory[]>(getCommunitySupportCategories());
   const [selectedCategory, setSelectedCategory] = useState<CommunityNeedCategory>('food_and_water');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<CommunitySupportPlace[]>([]);
@@ -75,24 +42,6 @@ export default function CommunitySupportScreen() {
     mapsOpened: 0,
     fallbackShown: 0,
   });
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const response = await getCommunitySupportCategories();
-        if (!active) return;
-        if (Array.isArray(response?.categories) && response.categories.length > 0) {
-          setCategories(response.categories);
-        }
-      } catch {
-        // Keep local fallback categories.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -133,7 +82,7 @@ export default function CommunitySupportScreen() {
     }
     setLoading(true);
     try {
-      const response = await requestCommunitySupportPlaces({
+      const response = await findCommunitySupportPlaces({
         need_category: selectedCategory,
         current_lat: coords.lat,
         current_lng: coords.lng,

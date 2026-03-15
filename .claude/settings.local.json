@@ -3,7 +3,14 @@
     "allow": [
       "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-git --eslint --import-alias \"@/*\" --yes)",
       "Bash(git stash:*)",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(grep -r \"GEMINI\" /Users/woochachino/roamio/mobile/.env*)",
+      "Bash(grep -r \"GEMINI\" /Users/woochachino/roamio/.env*)",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyDZcQCZlRLMKoIK8rSS1qzbxy8gzM3lYO4\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDZcQCZlRLMKoIK8rSS1qzbxy8gzM3lYO4\" -H \"Content-Type: application/json\" -d '{\"\"contents\"\":[{\"\"parts\"\":[{\"\"text\"\":\"\"Say hi\"\"}]}]}')",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDZcQCZlRLMKoIK8rSS1qzbxy8gzM3lYO4\" -H \"Content-Type: application/json\" -d '{\"\"\"\"contents\"\"\"\":[{\"\"\"\"parts\"\"\"\":[{\"\"\"\"text\"\"\"\":\"\"\"\"Say hi\"\"\"\"}]}]}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyDZcQCZlRLMKoIK8rSS1qzbxy8gzM3lYO4\" -H \"Content-Type: application/json\" -d '{\"\"contents\"\":[{\"\"parts\"\":[{\"\"text\"\":\"\"Say hi\"\"}]}]}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''start script:'''', d.get\\(''''scripts'''',{}\\).get\\(''''start'''',''''\\(none\\)''''\\)\\); print\\(''''dev script:'''', d.get\\(''''scripts'''',{}\\).get\\(''''dev'''',''''\\(none\\)''''\\)\\)\")"
     ]
   }
 }
