@@ -43,6 +43,35 @@ function normalizeActivityBlock(block: any): ActivityBlock {
   };
 }
 
+function toClockMinutes(value: string): number {
+  if (!value) return 0;
+  const raw = String(value).trim();
+  const hhmm = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (hhmm) {
+    const h = Number(hhmm[1]);
+    const m = Number(hhmm[2]);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      return h * 60 + m;
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return 0;
+  return parsed.getHours() * 60 + parsed.getMinutes();
+}
+
+function sortActivityBlocks(blocks: ActivityBlock[]): ActivityBlock[] {
+  return [...blocks].sort((a, b) => {
+    const dayDiff = (a.day_index ?? 0) - (b.day_index ?? 0);
+    if (dayDiff !== 0) return dayDiff;
+
+    const startDiff = toClockMinutes(a.start_time) - toClockMinutes(b.start_time);
+    if (startDiff !== 0) return startDiff;
+
+    return a.place_name.localeCompare(b.place_name);
+  });
+}
+
 function mapSuggestion(suggestion: any): ActivitySuggestion {
   return {
     place_id: suggestion.place_id,
@@ -253,7 +282,13 @@ export const useTripStore = create<TripStore>((set, get) => ({
       if (!trips) return;
 
       const tripIds = trips.map((trip) => trip.id);
-      const { data: blocks } = await supabase.from('activity_blocks').select('*').in('trip_id', tripIds);
+      const { data: blocks } = await supabase
+        .from('activity_blocks')
+        .select('*')
+        .in('trip_id', tripIds)
+        .order('trip_id', { ascending: true })
+        .order('day_index', { ascending: true })
+        .order('start_time', { ascending: true });
       const { data: checkIns } = await supabase
         .from('check_ins')
         .select('*')
@@ -269,6 +304,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
         blocks.forEach((block) => {
           if (!blocksMap[block.trip_id]) blocksMap[block.trip_id] = [];
           blocksMap[block.trip_id].push(normalizeActivityBlock(block));
+        });
+
+        Object.keys(blocksMap).forEach((tripIdKey) => {
+          blocksMap[tripIdKey] = sortActivityBlocks(blocksMap[tripIdKey]);
         });
       }
 
@@ -373,18 +412,23 @@ export const useTripStore = create<TripStore>((set, get) => ({
         .select()
         .single();
       if (data && !error) {
+        const normalized = normalizeActivityBlock(data);
         set((state) => {
           const newBlocks = { ...state.activityBlocks };
           for (const tid of Object.keys(newBlocks)) {
             const idx = newBlocks[tid].findIndex(b => b.id === blockId);
             if (idx !== -1) {
-              newBlocks[tid] = [...newBlocks[tid].slice(0, idx), data, ...newBlocks[tid].slice(idx + 1)];
+              newBlocks[tid] = sortActivityBlocks([
+                ...newBlocks[tid].slice(0, idx),
+                normalized,
+                ...newBlocks[tid].slice(idx + 1),
+              ]);
               break;
             }
           }
           return { activityBlocks: newBlocks };
         });
-        return data as ActivityBlock;
+        return normalized;
       }
       if (error) console.error('updateActivityBlock error:', error);
     } catch (e) {
@@ -451,7 +495,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
         return {
           activityBlocks: {
             ...state.activityBlocks,
-            [resolvedBlock.trip_id]: [...existing, normalized],
+            [resolvedBlock.trip_id]: sortActivityBlocks([...existing, normalized]),
           },
         };
       });
@@ -464,18 +508,18 @@ export const useTripStore = create<TripStore>((set, get) => ({
         .select()
         .single();
       if (error) throw new Error(`Supabase insert failed: ${error.message} (code: ${error.code})`);
-      if (data) {
-        const normalized = normalizeActivityBlock(data);
-        set((state) => {
-          const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
-          return {
-            activityBlocks: {
-              ...state.activityBlocks,
-              [resolvedBlock.trip_id]: [...existing, normalized],
-            },
-          };
-        });
-        return normalized;
+        if (data) {
+          const normalized = normalizeActivityBlock(data);
+          set((state) => {
+            const existing = state.activityBlocks[resolvedBlock.trip_id] || [];
+            return {
+              activityBlocks: {
+                ...state.activityBlocks,
+                [resolvedBlock.trip_id]: sortActivityBlocks([...existing, normalized]),
+              },
+            };
+          });
+          return normalized;
       }
       return null;
     }
@@ -549,12 +593,12 @@ export const useTripStore = create<TripStore>((set, get) => ({
     const trip = trips.find((t) => t.id === activityBlock.trip_id);
 
     // Gather today's remaining blocks for context
-    const allTripBlocks = activityBlocks[activityBlock.trip_id] || [];
-    const remainingBlocks = allTripBlocks.filter(
-      (b) =>
-        b.id !== activityBlock.id &&
-        b.start_time > activityBlock.start_time
-    );
+    const allTripBlocks = sortActivityBlocks(activityBlocks[activityBlock.trip_id] || []);
+    const currentBlockIndex = allTripBlocks.findIndex((b) => b.id === activityBlock.id);
+    const remainingBlocks =
+      currentBlockIndex >= 0
+        ? allTripBlocks.slice(currentBlockIndex + 1)
+        : allTripBlocks.filter((b) => b.id !== activityBlock.id);
 
     const priorCheckins = checkIns.map((c) => ({
       activity_block_id: c.activity_block_id,

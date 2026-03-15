@@ -10,6 +10,48 @@ import { C } from '../../lib/colors';
 import { F } from '../../lib/fonts';
 import { formatDate, formatTimeRange, getEnergyColor, getEnergyLabel, isBlockActive } from '../../lib/utils';
 
+function toClockMinutes(value: string): number {
+  if (!value) return 0;
+  const raw = String(value).trim();
+  const hhmm = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (hhmm) {
+    const h = Number(hhmm[1]);
+    const m = Number(hhmm[2]);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      return h * 60 + m;
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return 0;
+  return parsed.getHours() * 60 + parsed.getMinutes();
+}
+
+function sortBlocksByDayAndTime<T extends { day_index: number; start_time: string; place_name: string }>(
+  blocks: T[]
+): T[] {
+  return [...blocks].sort((a, b) => {
+    const dayDiff = (a.day_index ?? 0) - (b.day_index ?? 0);
+    if (dayDiff !== 0) return dayDiff;
+
+    const timeDiff = toClockMinutes(a.start_time) - toClockMinutes(b.start_time);
+    if (timeDiff !== 0) return timeDiff;
+
+    return a.place_name.localeCompare(b.place_name);
+  });
+}
+
+function getCurrentTripDayIndex(startDate: string, endDate: string, now: Date): number | null {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  const currentDay = new Date(now);
+  currentDay.setHours(0, 0, 0, 0);
+
+  if (currentDay < start || currentDay > end) return null;
+  const diffMs = currentDay.getTime() - start.getTime();
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, activeTrip, activityBlocks, checkIns } = useTripStore();
@@ -21,9 +63,17 @@ export default function DashboardScreen() {
   }, []);
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const todayBlocks = activeTrip ? (activityBlocks[activeTrip.id] || []) : [];
-  const activeBlock = todayBlocks.find((b) => isBlockActive(b.start_time, b.end_time, currentMinutes));
-  const activeTripBlockIds = new Set(todayBlocks.map((b) => b.id));
+  const allTripBlocks = activeTrip ? sortBlocksByDayAndTime(activityBlocks[activeTrip.id] || []) : [];
+  const currentTripDayIndex = activeTrip
+    ? getCurrentTripDayIndex(activeTrip.start_date, activeTrip.end_date, now)
+    : null;
+  const blocksForCurrentDay =
+    currentTripDayIndex == null
+      ? []
+      : allTripBlocks.filter((b) => b.day_index === currentTripDayIndex);
+  const displayBlocks = blocksForCurrentDay.length > 0 ? blocksForCurrentDay : allTripBlocks;
+  const activeBlock = displayBlocks.find((b) => isBlockActive(b.start_time, b.end_time, currentMinutes));
+  const activeTripBlockIds = new Set(allTripBlocks.map((b) => b.id));
   const tripCheckIns = checkIns.filter((c) => activeTripBlockIds.has(c.activity_block_id));
   const checkedInIds = new Set(tripCheckIns.map((c) => c.activity_block_id));
 
@@ -31,8 +81,12 @@ export default function DashboardScreen() {
   const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const upcomingBlocks = todayBlocks.filter((b) => !checkedInIds.has(b.id));
+  const upcomingBlocks = displayBlocks.filter((b) => !checkedInIds.has(b.id));
   const nextBlock = upcomingBlocks.length > 0 ? upcomingBlocks[0] : null;
+  const activitySectionTitle =
+    blocksForCurrentDay.length > 0 && currentTripDayIndex != null
+      ? `Day ${currentTripDayIndex + 1} Activities`
+      : 'Trip Activities';
 
   const avgEnergy = tripCheckIns.length > 0
     ? (tripCheckIns.reduce((sum, c) => sum + c.energy_level, 0) / tripCheckIns.length).toFixed(1)
@@ -120,7 +174,7 @@ export default function DashboardScreen() {
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.65)']} style={StyleSheet.absoluteFill} />
               <View style={s.tripBottom}>
                 <Text style={s.tripTitle}>{activeTrip.destination}</Text>
-                <Text style={s.tripSub}>{formatDate(activeTrip.start_date)} - {formatDate(activeTrip.end_date)} | {todayBlocks.length} activities</Text>
+                <Text style={s.tripSub}>{formatDate(activeTrip.start_date)} - {formatDate(activeTrip.end_date)} | {allTripBlocks.length} activities</Text>
               </View>
             </View>
           </Pressable>
@@ -138,8 +192,8 @@ export default function DashboardScreen() {
         {activeTrip && (
           <View style={s.section}>
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>Today's Activities</Text>
-              <View style={s.badge}><Text style={s.badgeText}>{checkedInIds.size} checked in / {todayBlocks.length} planned</Text></View>
+              <Text style={s.sectionTitle}>{activitySectionTitle}</Text>
+              <View style={s.badge}><Text style={s.badgeText}>{checkedInIds.size} checked in / {displayBlocks.length} planned</Text></View>
             </View>
 
             {nextBlock && (
@@ -156,7 +210,7 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {todayBlocks.map((block) => {
+            {displayBlocks.map((block) => {
               const isActive = block.id === activeBlock?.id;
               const isCheckedIn = checkedInIds.has(block.id);
               const ec = getEnergyColor(block.energy_cost_estimate);

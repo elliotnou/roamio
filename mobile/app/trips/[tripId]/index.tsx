@@ -21,15 +21,62 @@ const SCREEN_W = Dimensions.get('window').width;
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function parseTime(s: string): Date | null {
-  if (!s) return null;
-  // Handle plain HH:MM (stored after normalizeTime strips the date)
-  if (/^\d{2}:\d{2}/.test(s) && !s.includes('T')) {
-    const [h, m] = s.split(':').map(Number);
-    const d = new Date();
-    d.setHours(h ?? 0, m ?? 0, 0, 0);
-    return d;
+  const minutes = getClockMinutes(s);
+  if (minutes == null) return null;
+  return clockDateFromMinutes(minutes);
+}
+
+function getClockMinutes(value: string | Date): number | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.getHours() * 60 + value.getMinutes();
   }
-  try { const d = new Date(s); return isNaN(d.getTime()) ? null : d; } catch { return null; }
+
+  if (!value) return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  // Preferred input shape in app state.
+  const hhmmMatch = raw.match(/^(\d{1,2}):(\d{2})/);
+  if (hhmmMatch) {
+    const hours = Number(hhmmMatch[1]);
+    const minutes = Number(hhmmMatch[2]);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  // Support persisted ISO values.
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.getHours() * 60 + parsed.getMinutes();
+}
+
+function clockDateFromMinutes(totalMinutes: number): Date {
+  const date = new Date(2000, 0, 1, 0, 0, 0, 0);
+  date.setMinutes(Math.max(0, totalMinutes));
+  return date;
+}
+
+function normalizeClockDate(value: Date): Date {
+  const minutes = getClockMinutes(value);
+  return clockDateFromMinutes(minutes ?? 0);
+}
+
+function formatLocalTimestamp(baseDate: string, clockValue: Date): string {
+  const date = new Date(`${baseDate}T00:00:00`);
+  date.setHours(clockValue.getHours(), clockValue.getMinutes(), 0, 0);
+  // Persist as full ISO with timezone so timestamptz preserves the intended local clock time.
+  return date.toISOString();
+}
+
+function getTripDayDate(tripStartDate: string, dayIndex: number): string {
+  const date = new Date(`${tripStartDate}T00:00:00`);
+  date.setDate(date.getDate() + dayIndex);
+  const y = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, '0');
+  const da = String(date.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${da}`;
 }
 
 function fmtTime(s: string): string {
@@ -43,10 +90,10 @@ function fmtTimePicker(d: Date): string {
 }
 
 function durationLabel(start: string | Date, end: string | Date): string {
-  const s = typeof start === 'string' ? parseTime(start) : start;
-  const e = typeof end === 'string' ? parseTime(end) : end;
-  if (!s || !e) return '';
-  const min = Math.round((e.getTime() - s.getTime()) / 60000);
+  const startMinutes = getClockMinutes(start);
+  const endMinutes = getClockMinutes(end);
+  if (startMinutes == null || endMinutes == null) return '';
+  const min = endMinutes - startMinutes;
   if (min <= 0) return '';
   if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60), m = min % 60;
@@ -54,9 +101,10 @@ function durationLabel(start: string | Date, end: string | Date): string {
 }
 
 function gapMinutes(a: ActivityBlock, b: ActivityBlock): number {
-  const e = parseTime(a.end_time), s = parseTime(b.start_time);
-  if (!e || !s) return 0;
-  return Math.round((s.getTime() - e.getTime()) / 60000);
+  const endMinutes = getClockMinutes(a.end_time);
+  const startMinutes = getClockMinutes(b.start_time);
+  if (endMinutes == null || startMinutes == null) return 0;
+  return startMinutes - endMinutes;
 }
 
 function blockColor(block: ActivityBlock): string {
@@ -72,11 +120,14 @@ function findConflict(
   end: Date,
   excludeId?: string,
 ): ActivityBlock | null {
-  const s = start.getTime(), e = end.getTime();
+  const s = getClockMinutes(start);
+  const e = getClockMinutes(end);
+  if (s == null || e == null) return null;
+
   for (const b of blocks) {
     if (b.id === excludeId) continue;
-    const bs = parseTime(b.start_time)?.getTime() ?? 0;
-    const be = parseTime(b.end_time)?.getTime() ?? 0;
+    const bs = getClockMinutes(b.start_time) ?? 0;
+    const be = getClockMinutes(b.end_time) ?? 0;
     if (s < be && e > bs) return b;
   }
   return null;
@@ -90,31 +141,34 @@ function nudgeDate(d: Date, minutes: number): Date {
 
 function EditSheet({
   block,
+  tripStartDate,
   siblingBlocks,
   onSave,
   onDelete,
   onClose,
 }: {
   block: ActivityBlock;
+  tripStartDate: string;
   siblingBlocks: ActivityBlock[];   // same day, excluding self
-  onSave: (updates: { place_name: string; start_time: string; end_time: string }) => Promise<void>;
+  onSave: (updates: { place_name: string; start_time: string; end_time: string }) => Promise<boolean>;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(block.place_name);
-  const [start, setStart] = useState<Date>(parseTime(block.start_time) ?? new Date());
-  const [end, setEnd]     = useState<Date>(parseTime(block.end_time)   ?? new Date());
+  const [start, setStart] = useState<Date>(parseTime(block.start_time) ?? clockDateFromMinutes(9 * 60));
+  const [end, setEnd]     = useState<Date>(parseTime(block.end_time)   ?? clockDateFromMinutes(10 * 60));
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [saving, setSaving] = useState(false);
 
   const conflict = findConflict(siblingBlocks, start, end);
   const dur = durationLabel(start, end);
-  const startMs = start.getTime(), endMs = end.getTime();
-  const validTime = endMs > startMs;
+  const startMinutes = getClockMinutes(start) ?? 0;
+  const endMinutes = getClockMinutes(end) ?? 0;
+  const validTime = endMinutes > startMinutes;
 
   // Nudge start + keep duration
   const nudgeMove = (minutes: number) => {
-    const duration = endMs - startMs;
+    const duration = endMinutes - startMinutes;
     const newStart = nudgeDate(start, minutes);
     setStart(newStart);
     setEnd(new Date(newStart.getTime() + duration));
@@ -125,27 +179,19 @@ function EditSheet({
     setEnd(nudgeDate(end, minutes));
   };
 
-  const toISO = (d: Date, ref: string): string => {
-    // keep the calendar date from the original block, only change H:M
-    const base = parseTime(ref) ?? new Date(ref);
-    base.setHours(d.getHours(), d.getMinutes(), 0, 0);
-    const y = base.getFullYear();
-    const mo = String(base.getMonth() + 1).padStart(2, '0');
-    const da = String(base.getDate()).padStart(2, '0');
-    const h  = String(base.getHours()).padStart(2, '0');
-    const mi = String(base.getMinutes()).padStart(2, '0');
-    return `${y}-${mo}-${da}T${h}:${mi}:00`;
-  };
-
   const handleSave = async () => {
     if (!name.trim()) return;
     setSaving(true);
-    await onSave({
-      place_name: name.trim(),
-      start_time: toISO(start, block.start_time),
-      end_time:   toISO(end,   block.end_time),
-    });
-    setSaving(false);
+    try {
+      const tripDate = getTripDayDate(tripStartDate, block.day_index);
+      await onSave({
+        place_name: name.trim(),
+        start_time: formatLocalTimestamp(tripDate, start),
+        end_time: formatLocalTimestamp(tripDate, end),
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -265,12 +311,13 @@ function EditSheet({
             textColor={C.fg}
             onChange={(_, date) => {
               if (!date) return;
+              const normalized = normalizeClockDate(date);
               if (picker === 'start') {
                 const duration = end.getTime() - start.getTime();
-                setStart(date);
-                setEnd(new Date(date.getTime() + duration));
+                setStart(normalized);
+                setEnd(new Date(normalized.getTime() + duration));
               } else {
-                setEnd(date);
+                setEnd(normalized);
               }
             }}
           />
@@ -303,9 +350,11 @@ function ItineraryTab({
   const conflictIds = new Set<string>();
   for (let i = 0; i < dayBlocks.length; i++) {
     for (let j = i + 1; j < dayBlocks.length; j++) {
-      const ai = parseTime(dayBlocks[i].start_time), bi = parseTime(dayBlocks[i].end_time);
-      const aj = parseTime(dayBlocks[j].start_time), bj = parseTime(dayBlocks[j].end_time);
-      if (ai && bi && aj && bj && ai.getTime() < bj.getTime() && bi.getTime() > aj.getTime()) {
+      const ai = getClockMinutes(dayBlocks[i].start_time);
+      const bi = getClockMinutes(dayBlocks[i].end_time);
+      const aj = getClockMinutes(dayBlocks[j].start_time);
+      const bj = getClockMinutes(dayBlocks[j].end_time);
+      if (ai != null && bi != null && aj != null && bj != null && ai < bj && bi > aj) {
         conflictIds.add(dayBlocks[i].id);
         conflictIds.add(dayBlocks[j].id);
       }
@@ -634,9 +683,14 @@ export default function TripDetailScreen() {
   const [editingBlock, setEditingBlock] = useState<ActivityBlock | null>(null);
 
   const handleSaveEdit = async (updates: { place_name: string; start_time: string; end_time: string }) => {
-    if (!editingBlock) return;
-    await updateActivityBlock(editingBlock.id, updates);
+    if (!editingBlock) return false;
+    const updated = await updateActivityBlock(editingBlock.id, updates);
+    if (!updated) {
+      Alert.alert('Save failed', 'Could not update this activity. Please try again.');
+      return false;
+    }
     setEditingBlock(null);
+    return true;
   };
 
   const handleDeleteEdit = () => {
@@ -761,6 +815,7 @@ export default function TripDetailScreen() {
           {editingBlock && (
             <EditSheet
               block={editingBlock}
+              tripStartDate={trip.start_date}
               siblingBlocks={siblingBlocks}
               onSave={handleSaveEdit}
               onDelete={handleDeleteEdit}

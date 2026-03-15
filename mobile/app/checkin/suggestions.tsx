@@ -20,6 +20,17 @@ function getEnergyBadgeColor(label: 'very low' | 'low' | 'moderate'): string {
   }
 }
 
+function toTimestamptz(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (/[zZ]$/.test(trimmed) || /[+-]\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString();
+}
+
 export default function SuggestionsScreen() {
   const router = useRouter();
   const {
@@ -87,7 +98,7 @@ export default function SuggestionsScreen() {
     // Build full ISO timestamps — DB stores timestamptz, not plain HH:MM
     const trip = trips.find((t) => t.id === tripId);
     const dayIndex = sourceBlock?.day_index ?? 0;
-    const baseDate = trip?.start_date ? new Date(trip.start_date) : new Date();
+    const baseDate = trip?.start_date ? new Date(`${trip.start_date}T00:00:00`) : new Date();
     baseDate.setDate(baseDate.getDate() + dayIndex);
     const dateStr = baseDate.toISOString().split('T')[0]; // "YYYY-MM-DD"
 
@@ -152,8 +163,8 @@ export default function SuggestionsScreen() {
         resolved_place_name: placeName,
         resolved_lat: null,
         resolved_lng: null,
-        start_time: startISO,
-        end_time: endISO,
+        start_time: toTimestamptz(startISO),
+        end_time: toTimestamptz(endISO),
         activity_type: 'other',
         energy_cost_estimate: sourceCheckIn?.energy_level ?? 5,
       });
