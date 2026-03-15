@@ -97,7 +97,7 @@ export default function GenerateScreen() {
           </Pressable>
         </View>
 
-        <Text style={s.title}>Generate Day {dayIndex + 1}</Text>
+        <Text style={s.title}>Curate Day {dayIndex + 1}</Text>
         <Text style={s.subtitle}>
           Gemini will fill your day in{' '}
           {activeTrip?.destination ?? 'your trip'} with meals, sights, and smart pacing.
@@ -134,7 +134,7 @@ export default function GenerateScreen() {
         {/* Generate CTA */}
         <Pressable style={s.generateBtn} onPress={handleGenerate}>
           <Feather name="zap" size={16} color={C.white} />
-          <Text style={s.generateBtnText}>Generate with Gemini</Text>
+          <Text style={s.generateBtnText}>Curate with Gemini</Text>
         </Pressable>
 
         <Text style={s.footnote}>

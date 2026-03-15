@@ -14,7 +14,7 @@ export class GeminiClientError extends Error {
   }
 }
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**

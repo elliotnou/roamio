@@ -81,8 +81,6 @@ export default function DashboardScreen() {
   const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const upcomingBlocks = displayBlocks.filter((b) => !checkedInIds.has(b.id));
-  const nextBlock = upcomingBlocks.length > 0 ? upcomingBlocks[0] : null;
   const activitySectionTitle =
     blocksForCurrentDay.length > 0 && currentTripDayIndex != null
       ? `Day ${currentTripDayIndex + 1} Activities`
@@ -190,60 +188,82 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {activeTrip && (
+        {activeTrip && displayBlocks.length > 0 && (
           <View style={s.section}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>{activitySectionTitle}</Text>
-              <View style={s.badge}><Text style={s.badgeText}>{checkedInIds.size} checked in / {displayBlocks.length} planned</Text></View>
+              <View style={s.badge}><Text style={s.badgeText}>{checkedInIds.size}/{displayBlocks.length}</Text></View>
             </View>
 
-            {nextBlock && (
-              <View style={s.nextCard}>
-                <View style={s.nextCardTop}>
-                  <Text style={s.nextLabel}>Next up</Text>
-                  <Text style={s.nextTime}>{formatTimeRange(nextBlock.start_time, nextBlock.end_time)}</Text>
-                </View>
-                <Text style={s.nextName}>{nextBlock.place_name}</Text>
-                <Pressable style={s.nextCheckBtn} onPress={() => router.push(`/checkin/${nextBlock.id}` as never)}>
-                  <Feather name="check-circle" size={14} color={C.white} />
-                  <Text style={s.nextCheckText}>Energy check-in</Text>
-                </Pressable>
-              </View>
-            )}
+            <View style={s.roadmap}>
+              {displayBlocks.map((block, idx) => {
+                const isActive = block.id === activeBlock?.id;
+                const isCheckedIn = checkedInIds.has(block.id);
+                const isLast = idx === displayBlocks.length - 1;
+                const ec = getEnergyColor(block.energy_cost_estimate);
+                const nodeColor = isActive ? C.sage : isCheckedIn ? C.sage : C.border;
 
-            {displayBlocks.map((block) => {
-              const isActive = block.id === activeBlock?.id;
-              const isCheckedIn = checkedInIds.has(block.id);
-              const ec = getEnergyColor(block.energy_cost_estimate);
-              return (
-                <View key={block.id} style={[s.blockCard, isActive && s.blockCardActive]}>
-                  {isActive && <View style={s.activeIndicator}><Text style={s.activeText}>NOW</Text></View>}
-                  <View style={s.blockRow}>
-                    <View style={[s.blockIcon, isActive && s.blockIconActive]}>
-                      <ActivityIcon type={block.activity_type} size={isActive ? 20 : 18} color={isActive ? C.sage : C.secondary} />
-                    </View>
-                    <View style={s.blockContent}>
-                      <View style={s.blockTop}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.blockName}>{block.place_name}</Text>
-                          <Text style={s.blockTime}>{formatTimeRange(block.start_time, block.end_time)}</Text>
-                        </View>
-                        <View style={[s.energyBadge, { backgroundColor: ec.bg }]}>
-                          <Text style={[s.energyText, { color: ec.text }]}>{getEnergyLabel(block.energy_cost_estimate)}</Text>
-                        </View>
+                return (
+                  <Pressable
+                    key={block.id}
+                    style={s.rmRow}
+                    onPress={() => router.push(`/checkin/${block.id}` as never)}
+                  >
+                    {/* Spine */}
+                    <View style={s.rmSpine}>
+                      <View style={[
+                        s.rmNode,
+                        { backgroundColor: nodeColor, borderColor: nodeColor + '40' },
+                        isActive && s.rmNodeActive,
+                      ]}>
+                        {isCheckedIn && <Feather name="check" size={8} color={C.white} />}
+                        {isActive && !isCheckedIn && <View style={s.rmNodePulse} />}
                       </View>
-                      {isCheckedIn && <View style={s.doneRow}><View style={s.doneDot} /><Text style={s.doneText}>Checked in</Text></View>}
-                      {!isCheckedIn && isActive && (
-                        <Pressable style={s.checkinBtn} onPress={() => router.push(`/checkin/${block.id}` as never)}>
-                          <Feather name="check-circle" size={14} color={C.white} />
-                          <Text style={s.checkinBtnText}>Check In</Text>
-                        </Pressable>
+                      {!isLast && (
+                        <View style={[s.rmLine, { backgroundColor: isCheckedIn ? C.sage + '50' : C.border }]} />
                       )}
                     </View>
-                  </View>
+
+                    {/* Card */}
+                    <View style={[s.rmCard, isActive && s.rmCardActive]}>
+                      {isActive && <View style={s.rmNowBadge}><Text style={s.rmNowText}>NOW</Text></View>}
+                      <View style={s.rmCardTop}>
+                        <View style={[s.rmIconWrap, { backgroundColor: isActive ? C.sage + '18' : C.cardBg }]}>
+                          <ActivityIcon type={block.activity_type} size={16} color={isActive ? C.sage : C.secondary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.rmName} numberOfLines={1}>{block.place_name}</Text>
+                          <Text style={s.rmTime}>{formatTimeRange(block.start_time, block.end_time)}</Text>
+                        </View>
+                        <View style={[s.rmEnergyDot, { backgroundColor: ec.bg }]}>
+                          <Text style={[s.rmEnergyText, { color: ec.text }]}>{getEnergyLabel(block.energy_cost_estimate)}</Text>
+                        </View>
+                      </View>
+                      {isCheckedIn && (
+                        <View style={s.rmDoneRow}>
+                          <Feather name="check-circle" size={11} color={C.sage} />
+                          <Text style={s.rmDoneText}>Checked in</Text>
+                        </View>
+                      )}
+                      {isActive && !isCheckedIn && (
+                        <View style={s.rmCtaRow}>
+                          <Feather name="zap" size={12} color={C.sageDark} />
+                          <Text style={s.rmCtaText}>Tap to check in</Text>
+                        </View>
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              {/* End node */}
+              <View style={s.rmEndRow}>
+                <View style={s.rmSpine}>
+                  <View style={s.rmEndDot} />
                 </View>
-              );
-            })}
+                <Text style={s.rmEndText}>End of day</Text>
+              </View>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -358,48 +378,52 @@ const s = StyleSheet.create({
   emptyBtnText: { color: C.white, fontFamily: F.semiBold, fontSize: 14 },
 
   section: { marginBottom: 16 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   sectionTitle: { fontSize: 18, fontFamily: F.bold, color: C.fg },
-  badge: { backgroundColor: C.cardBg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 },
-  badgeText: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
+  badge: { backgroundColor: C.cardBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
+  badgeText: { fontSize: 11, fontFamily: F.bold, color: C.secondary },
 
-  nextCard: { backgroundColor: C.white, borderRadius: 18, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: C.border },
-  nextCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  nextLabel: { fontSize: 12, fontFamily: F.bold, color: C.placeholder, textTransform: 'uppercase', letterSpacing: 0.8 },
-  nextTime: { fontSize: 12, fontFamily: F.medium, color: C.secondary },
-  nextName: { marginTop: 6, fontSize: 16, fontFamily: F.bold, color: C.fg },
-  nextCheckBtn: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.charcoal, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, marginTop: 10 },
-  nextCheckText: { color: C.white, fontSize: 12, fontFamily: F.semiBold },
-
-  blockCard: {
-    backgroundColor: C.white,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+  // Roadmap timeline
+  roadmap: { paddingLeft: 4 },
+  rmRow: { flexDirection: 'row', alignItems: 'stretch', minHeight: 72 },
+  rmSpine: { width: 24, alignItems: 'center', paddingTop: 2 },
+  rmNode: {
+    width: 14, height: 14, borderRadius: 7, borderWidth: 2,
+    justifyContent: 'center', alignItems: 'center', zIndex: 1,
   },
-  blockCardActive: { borderLeftColor: C.sage, shadowOpacity: 0.12, shadowRadius: 16, transform: [{ scale: 1.02 }] },
-  activeIndicator: { position: 'absolute', top: -10, right: 20, backgroundColor: C.sage, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, zIndex: 1, shadowColor: C.sage, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 },
-  activeText: { color: C.white, fontSize: 10, fontFamily: F.bold, letterSpacing: 1 },
-  blockRow: { flexDirection: 'row', gap: 16 },
-  blockIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: C.cardBg, justifyContent: 'center', alignItems: 'center' },
-  blockIconActive: { backgroundColor: C.sage + '20' },
-  blockContent: { flex: 1, justifyContent: 'center' },
-  blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  blockName: { fontSize: 16, fontFamily: F.bold, color: C.fg },
-  blockTime: { fontSize: 13, fontFamily: F.medium, color: C.placeholder, marginTop: 4 },
-  energyBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  energyText: { fontSize: 10, fontFamily: F.semiBold },
-  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  doneDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.sage },
-  doneText: { fontSize: 12, fontFamily: F.medium, color: C.eHighText },
-  checkinBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.charcoal, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 16, marginTop: 12 },
-  checkinBtnText: { color: C.white, fontSize: 14, fontFamily: F.semiBold },
+  rmNodeActive: {
+    width: 18, height: 18, borderRadius: 9,
+    shadowColor: C.sage, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 6,
+  },
+  rmNodePulse: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.white },
+  rmLine: { flex: 1, width: 2, marginVertical: 2 },
 
+  rmCard: {
+    flex: 1, marginLeft: 10, marginBottom: 8,
+    backgroundColor: C.white, borderRadius: 14, padding: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+  },
+  rmCardActive: {
+    backgroundColor: '#f5f9f2', borderWidth: 1, borderColor: C.sage + '40',
+    shadowColor: C.sage, shadowOpacity: 0.1, shadowRadius: 12,
+  },
+  rmNowBadge: {
+    position: 'absolute', top: -8, right: 12,
+    backgroundColor: C.sage, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, zIndex: 1,
+  },
+  rmNowText: { color: C.white, fontSize: 9, fontFamily: F.bold, letterSpacing: 1 },
+  rmCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rmIconWrap: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  rmName: { fontSize: 14, fontFamily: F.bold, color: C.fg },
+  rmTime: { fontSize: 11, fontFamily: F.medium, color: C.placeholder, marginTop: 1 },
+  rmEnergyDot: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  rmEnergyText: { fontSize: 9, fontFamily: F.bold },
+  rmDoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, marginLeft: 44 },
+  rmDoneText: { fontSize: 11, fontFamily: F.medium, color: C.sage },
+  rmCtaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, marginLeft: 44 },
+  rmCtaText: { fontSize: 11, fontFamily: F.semiBold, color: C.sageDark },
+
+  rmEndRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, paddingBottom: 8 },
+  rmEndDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+  rmEndText: { marginLeft: 18, fontSize: 11, fontFamily: F.regular, color: C.placeholder },
 });
