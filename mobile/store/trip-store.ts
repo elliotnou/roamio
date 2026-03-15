@@ -13,15 +13,15 @@ import { supabase } from '../lib/supabase';
 import {
   createActivityBlockViaBackend,
   createCheckInViaBackend,
-  curateTripItineraryViaBackend,
   requestSuggestionsFromBackend,
   updateCheckInOutcomeViaBackend,
+  curateTripItineraryViaBackend,
 } from '../lib/backend';
+import { callGemini } from '../lib/gemini';
 import { resolvePlace } from '../lib/agent/resolve';
 import { classifyCheckIn } from '../lib/agent/classifier';
 import { rankAlternatives } from '../lib/agent/ranker';
 import { fetchNearbyPlaces, fetchPlacePrimaryPhotoUrl } from '../lib/places';
-import { callGemini } from '../lib/gemini';
 
 function normalizeTime(value: string): string {
   if (!value) return value;
@@ -76,10 +76,14 @@ function sortActivityBlocks(blocks: ActivityBlock[]): ActivityBlock[] {
 
 const CURATED_TYPE: ActivityType = 'mindful';
 const CURATED_TIME_SLOTS: ReadonlyArray<readonly [string, string]> = [
-  ['09:00', '10:30'],
+  ['08:00', '09:00'],
+  ['09:30', '11:00'],
   ['11:30', '13:00'],
-  ['14:30', '16:00'],
-  ['17:30', '19:00'],
+  ['13:30', '14:30'],
+  ['15:00', '16:30'],
+  ['17:00', '18:30'],
+  ['19:00', '20:30'],
+  ['20:30', '21:30'],
 ];
 
 const MOBILE_CLOSED_STATUSES = new Set(['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY']);
@@ -288,64 +292,60 @@ function buildCandidateDescription(candidate: DestinationCandidate): string {
   return `${ratingText}${locationText}, chosen for a ${candidate.vibe_hint}-friendly pace.`.slice(0, 220);
 }
 
-function buildDeterministicCuratedRows(trip: Trip, candidates: DestinationCandidate[]): Omit<ActivityBlock, 'id'>[] {
-  const dayCount = getTripDayCount(trip.start_date, trip.end_date);
+function buildDeterministicCuratedRows(trip: Trip, candidates: DestinationCandidate[], targetDayIndex: number = 0, slotCount: number = 5): Omit<ActivityBlock, 'id'>[] {
   const vibes = getSelectedVibes(trip);
   const rows: Omit<ActivityBlock, 'id'>[] = [];
   let cursor = 0;
+  const usedToday = new Set<string>();
 
-  for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
-    const usedToday = new Set<string>();
-    for (let slotIndex = 0; slotIndex < 3; slotIndex += 1) {
-      const targetVibe = vibes[(dayIndex + slotIndex) % vibes.length];
-      let selected: DestinationCandidate | null = null;
+  for (let slotIndex = 0; slotIndex < Math.min(slotCount, CURATED_TIME_SLOTS.length); slotIndex += 1) {
+    const targetVibe = vibes[(targetDayIndex + slotIndex) % vibes.length];
+    let selected: DestinationCandidate | null = null;
 
+    for (let probe = 0; probe < candidates.length; probe += 1) {
+      const candidate = candidates[(cursor + probe) % candidates.length];
+      if (!candidate || usedToday.has(candidate.place_id)) continue;
+      if (candidate.vibe_hint === targetVibe) {
+        selected = candidate;
+        cursor = (cursor + probe + 1) % candidates.length;
+        break;
+      }
+    }
+
+    if (!selected) {
       for (let probe = 0; probe < candidates.length; probe += 1) {
         const candidate = candidates[(cursor + probe) % candidates.length];
-        if (!candidate || usedToday.has(candidate.place_id)) continue;
-        if (candidate.vibe_hint === targetVibe) {
+        if (candidate && !usedToday.has(candidate.place_id)) {
           selected = candidate;
           cursor = (cursor + probe + 1) % candidates.length;
           break;
         }
       }
-
-      if (!selected) {
-        for (let probe = 0; probe < candidates.length; probe += 1) {
-          const candidate = candidates[(cursor + probe) % candidates.length];
-          if (candidate && !usedToday.has(candidate.place_id)) {
-            selected = candidate;
-            cursor = (cursor + probe + 1) % candidates.length;
-            break;
-          }
-        }
-      }
-
-      if (!selected) break;
-      usedToday.add(selected.place_id);
-      const [start, end] = CURATED_TIME_SLOTS[slotIndex];
-
-      rows.push({
-        trip_id: trip.id,
-        day_index: dayIndex,
-        place_name: selected.place_name,
-        resolved_place_id: selected.place_id,
-        resolved_place_name: buildCandidateDescription(selected),
-        resolved_lat: selected.resolved_lat,
-        resolved_lng: selected.resolved_lng,
-        activity_type: CURATED_TYPE,
-        energy_cost_estimate: clampInt(estimateEnergyForAgentType(mapGoogleTypesToAgentType(selected.types)), 1, 10, 4),
-        start_time: toTripTimestamp(trip.start_date, dayIndex, start),
-        end_time: toTripTimestamp(trip.start_date, dayIndex, end),
-      });
     }
+
+    if (!selected) break;
+    usedToday.add(selected.place_id);
+    const [start, end] = CURATED_TIME_SLOTS[slotIndex];
+
+    rows.push({
+      trip_id: trip.id,
+      day_index: targetDayIndex,
+      place_name: selected.place_name,
+      resolved_place_id: selected.place_id,
+      resolved_place_name: buildCandidateDescription(selected),
+      resolved_lat: selected.resolved_lat,
+      resolved_lng: selected.resolved_lng,
+      activity_type: CURATED_TYPE,
+      energy_cost_estimate: clampInt(estimateEnergyForAgentType(mapGoogleTypesToAgentType(selected.types)), 1, 10, 4),
+      start_time: toTripTimestamp(trip.start_date, targetDayIndex, start),
+      end_time: toTripTimestamp(trip.start_date, targetDayIndex, end),
+    });
   }
 
   return rows;
 }
 
-function buildMobileCurationPrompt(trip: Trip, candidates: DestinationCandidate[]): string {
-  const dayCount = getTripDayCount(trip.start_date, trip.end_date);
+function buildMobileCurationPrompt(trip: Trip, candidates: DestinationCandidate[], pace: 'light' | 'balanced' | 'packed' = 'balanced', dayIndex: number = 0): string {
   const vibeText = getSelectedVibes(trip).join(', ');
   const candidateLines = candidates
     .map((candidate) => {
@@ -355,66 +355,74 @@ function buildMobileCurationPrompt(trip: Trip, candidates: DestinationCandidate[
     })
     .join('\n');
 
-  return `Curate a full itinerary for an anxious traveller using only these real place_ids.
+  const paceConfig = {
+    light: { min: 3, max: 4, energy: '1-4', meals: 1, desc: 'Relaxed — 3-4 activities, generous breaks, gentle energy.' },
+    balanced: { min: 5, max: 6, energy: '2-6', meals: 2, desc: 'Comfortable mix — 5-6 activities with 2 meals, sightseeing, and buffer time.' },
+    packed: { min: 7, max: 8, energy: '2-8', meals: 3, desc: 'Jam-packed — 7-8 activities filling the whole day: breakfast, lunch, dinner, major sights, hidden gems, and experiences.' },
+  }[pace];
 
-Return JSON only:
+  return `You are building a SINGLE DAY itinerary for a traveler visiting ${trip.destination}. Use ONLY these real place_ids.
+
+PACE: ${pace.toUpperCase()} — ${paceConfig.desc}
+
+Return JSON only — a flat array of activities for this ONE day:
 {
   "days": [
     {
-      "day_index": 0,
+      "day_index": ${dayIndex},
       "activities": [
         {
           "place_id": "string",
           "start_time": "HH:MM",
           "end_time": "HH:MM",
-          "description": "factual short description grounded in place data",
-          "energy_cost_estimate": 1
+          "description": "short factual description",
+          "energy_cost_estimate": 3
         }
       ]
     }
   ]
 }
 
-Rules:
-- Create ${dayCount} days, day_index 0..${dayCount - 1}.
-- 3 to 4 activities per day.
-- Times in 24h HH:MM, non-overlapping, between 08:00 and 21:30.
-- Mostly low-energy activities (2-5).
-- Keep description brief, anxiety-friendly, and fact-based.
-- Use only listed place_ids.
-- Destination: ${trip.destination}
-- Vibes: ${vibeText}
+CRITICAL RULES:
+- Generate EXACTLY ONE day with day_index ${dayIndex}.
+- You MUST include ${paceConfig.min} to ${paceConfig.max} activities. Do NOT generate fewer.
+- ${paceConfig.meals} meal(s) required — use restaurants/cafes from the list (breakfast ~08:00-09:00, lunch ~12:00-13:30, dinner ~19:00-20:30).
+- Fill the day from 08:00 to 21:30 with varied durations: quick stops (30-45 min), medium visits (1-1.5h), longer experiences (2h).
+- Mix activity TYPES: meals, museums, parks, landmarks, markets, cafes — real variety, not all the same category.
+- Times in 24h HH:MM format, strictly non-overlapping, in chronological order.
+- Activities should be geographically sensible — nearby each other, not zig-zagging.
+- Energy costs: ${paceConfig.energy} range.
+- Use ONLY listed place_ids. Each place_id used at most once.
+- Vibes the traveler wants: ${vibeText}
 
-Candidates:
+Candidates (pick from these):
 ${candidateLines}`;
 }
 
 function normalizeGeminiCuratedRows(
   plan: GeminiCuratedPlan,
   trip: Trip,
-  candidatesById: Map<string, DestinationCandidate>
+  candidatesById: Map<string, DestinationCandidate>,
+  targetDayIndex?: number
 ): Omit<ActivityBlock, 'id'>[] {
-  const dayCount = getTripDayCount(trip.start_date, trip.end_date);
   const rows: Omit<ActivityBlock, 'id'>[] = [];
   const rawDays = Array.isArray(plan?.days) ? plan.days : [];
+  const usedGlobal = new Set<string>();
 
-  for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
-    const day = rawDays.find((d) => Number(d?.day_index) === dayIndex) || rawDays[dayIndex];
-    const activities = Array.isArray(day?.activities) ? day.activities.slice(0, 4) : [];
-    const usedToday = new Set<string>();
+  for (const day of rawDays) {
+    const dayIndex = Number(day?.day_index ?? 0);
+    if (targetDayIndex != null && dayIndex !== targetDayIndex) continue;
 
-    if (activities.length === 0) {
-      continue;
-    }
+    const activities = Array.isArray(day?.activities) ? day.activities : [];
 
     activities.forEach((activity, slotIndex) => {
       const candidate = activity?.place_id ? candidatesById.get(activity.place_id) : null;
-      if (!candidate || usedToday.has(candidate.place_id)) return;
+      if (!candidate || usedGlobal.has(candidate.place_id)) return;
       const fallbackSlot = CURATED_TIME_SLOTS[Math.min(slotIndex, CURATED_TIME_SLOTS.length - 1)];
       const start = normalizeClock(activity?.start_time, fallbackSlot[0]);
       const end = normalizeClock(activity?.end_time, fallbackSlot[1]);
       const description = buildCandidateDescription(candidate);
-      usedToday.add(candidate.place_id);
+      usedGlobal.add(candidate.place_id);
 
       rows.push({
         trip_id: trip.id,
@@ -517,8 +525,6 @@ function mapUiTypeToAgentType(type: ActivityType): AgentActivityType {
       return 'spa_wellness';
     case 'gallery':
       return 'cultural_event';
-    case 'mindful':
-      return 'relaxation';
     default:
       if (
         type === 'hiking' ||
@@ -579,9 +585,6 @@ function getNearbyIncludedTypesForActivity(type: ActivityType): string[] {
   if (type === 'park' || type === 'beach') {
     return ['park', 'tourist_attraction', 'cafe'];
   }
-  if (type === 'mindful') {
-    return ['park', 'spa', 'cafe', 'museum', 'tourist_attraction'];
-  }
   return ['park', 'museum', 'spa', 'cafe', 'tourist_attraction'];
 }
 
@@ -615,7 +618,7 @@ interface TripStore {
   addActivityBlock: (block: Omit<ActivityBlock, 'id'>) => Promise<ActivityBlock | null>;
   generateCuratedItinerary: (
     tripId: string,
-    options?: { replaceExisting?: boolean }
+    options?: { replaceExisting?: boolean; pace?: 'light' | 'balanced' | 'packed'; dayIndex?: number }
   ) => Promise<ActivityBlock[] | null>;
   deleteActivityBlock: (blockId: string, tripId: string) => Promise<boolean>;
   updateActivityBlock: (blockId: string, updates: Partial<Pick<ActivityBlock, 'place_name' | 'start_time' | 'end_time' | 'activity_type' | 'energy_cost_estimate'>>) => Promise<ActivityBlock | null>;
@@ -630,6 +633,21 @@ interface TripStore {
     selected_place_id?: string | null;
     selected_place_name?: string | null;
   }) => Promise<void>;
+  compactifyDay: (tripId: string, dayIndex: number) => Promise<CompactifyResult | null>;
+}
+
+export interface CompactifyItem {
+  id: string;
+  place_name: string;
+  start_time: string;
+  end_time: string;
+  action: 'keep' | 'drop';
+  reason: string;
+}
+
+export interface CompactifyResult {
+  items: CompactifyItem[];
+  summary: string;
 }
 
 export const useTripStore = create<TripStore>((set, get) => ({
@@ -923,6 +941,9 @@ export const useTripStore = create<TripStore>((set, get) => ({
 
   generateCuratedItinerary: async (tripId, options) => {
     const replaceExisting = !!options?.replaceExisting;
+    const pace = options?.pace || 'balanced';
+    const dayIndex = options?.dayIndex ?? 0;
+    const slotCount = { light: 4, balanced: 6, packed: 8 }[pace];
     const trip = get().trips.find((item) => item.id === tripId);
     if (!trip) return null;
 
@@ -965,14 +986,15 @@ export const useTripStore = create<TripStore>((set, get) => ({
       if (candidates.length === 0) {
         throw new Error('No Google Places candidates found for this destination.');
       }
-      let rowsToInsert = buildDeterministicCuratedRows(trip, candidates);
+      let rowsToInsert = buildDeterministicCuratedRows(trip, candidates, dayIndex, slotCount);
 
       try {
-        const geminiPlan = await callGemini<GeminiCuratedPlan>(buildMobileCurationPrompt(trip, candidates));
+        const geminiPlan = await callGemini<GeminiCuratedPlan>(buildMobileCurationPrompt(trip, candidates, pace, dayIndex));
         const geminiRows = normalizeGeminiCuratedRows(
           geminiPlan,
           trip,
-          new Map(candidates.map((candidate) => [candidate.place_id, candidate]))
+          new Map(candidates.map((candidate) => [candidate.place_id, candidate])),
+          dayIndex
         );
         if (geminiRows.length > 0) {
           rowsToInsert = geminiRows;
@@ -989,6 +1011,28 @@ export const useTripStore = create<TripStore>((set, get) => ({
         if (deleteError) {
           throw new Error(`Failed clearing existing blocks: ${deleteError.message}`);
         }
+      } else {
+        // Append mode: filter out duplicates and time overlaps with existing blocks
+        const existingBlocks = get().activityBlocks[tripId] || [];
+        const existingPlaceIds = new Set(existingBlocks.map((b) => b.resolved_place_id).filter(Boolean));
+        rowsToInsert = rowsToInsert.filter((row) => {
+          // Skip if same place already in itinerary
+          if (row.resolved_place_id && existingPlaceIds.has(row.resolved_place_id)) return false;
+          // Skip if time overlaps with an existing block on the same day
+          const rowStart = toClockMinutes(row.start_time);
+          const rowEnd = toClockMinutes(row.end_time);
+          const sameDayExisting = existingBlocks.filter((b) => b.day_index === row.day_index);
+          const overlaps = sameDayExisting.some((b) => {
+            const bStart = toClockMinutes(b.start_time);
+            const bEnd = toClockMinutes(b.end_time);
+            return rowStart < bEnd && rowEnd > bStart;
+          });
+          return !overlaps;
+        });
+      }
+
+      if (rowsToInsert.length === 0) {
+        return commitGeneratedBlocks([]);
       }
 
       const { data, error } = await supabase
@@ -1301,5 +1345,101 @@ export const useTripStore = create<TripStore>((set, get) => ({
       set({ suggestions: [], latestCheckInId: null });
     }
 
+  },
+
+  compactifyDay: async (tripId: string, dayIndex: number) => {
+    const { activityBlocks, trips, checkIns } = get();
+    const trip = trips.find((t) => t.id === tripId);
+    if (!trip) return null;
+
+    const allBlocks = sortActivityBlocks(activityBlocks[tripId] || []);
+    const dayBlocks = allBlocks.filter((b) => b.day_index === dayIndex);
+    if (dayBlocks.length <= 1) return null;
+
+    const tripCheckIns = checkIns.filter((c) =>
+      allBlocks.some((b) => b.id === c.activity_block_id)
+    );
+    const avgEnergy = tripCheckIns.length > 0
+      ? tripCheckIns.reduce((sum, c) => sum + c.energy_level, 0) / tripCheckIns.length
+      : 5;
+
+    const activitiesJson = dayBlocks.map((b) => ({
+      id: b.id,
+      place_name: b.place_name,
+      activity_type: b.activity_type,
+      start_time: b.start_time,
+      end_time: b.end_time,
+      energy_cost_estimate: b.energy_cost_estimate ?? 5,
+    }));
+
+    const prompt = `You are Roamio AI, a travel wellness assistant helping an overwhelmed traveler simplify their day.
+
+CONTEXT:
+- Destination: ${trip.destination}
+- Travel vibes: ${(trip.travel_vibes ?? []).join(', ') || 'not specified'}
+- Day ${dayIndex + 1} of their trip
+- Average energy level across check-ins: ${avgEnergy.toFixed(1)}/10
+- Number of recent low-energy check-ins: ${tripCheckIns.filter((c) => c.energy_level <= 4).length}
+
+TODAY'S ACTIVITIES (${dayBlocks.length} total):
+${JSON.stringify(activitiesJson, null, 2)}
+
+TASK:
+The traveler is feeling overwhelmed. Simplify their day by deciding which activities to KEEP and which to DROP.
+
+Rules:
+- Keep the activities that best match their travel vibes and are most essential to the destination experience
+- Drop activities that are high-energy, redundant, or less important
+- Aim to keep roughly 50-70% of activities — enough to still have a great day without burnout
+- Never drop ALL activities
+- Be warm and human in your reasoning — this person is stressed in a foreign country
+
+Return ONLY valid JSON in this exact format:
+{
+  "items": [
+    { "id": "<activity id>", "place_name": "<name>", "action": "keep", "reason": "short reason" },
+    { "id": "<activity id>", "place_name": "<name>", "action": "drop", "reason": "short reason" }
+  ],
+  "summary": "A warm 1-2 sentence message explaining the simplified day, with a touch of humor or reassurance"
+}`;
+
+    try {
+      const result = await callGemini<CompactifyResult>(prompt);
+      if (!result?.items || !Array.isArray(result.items)) return null;
+
+      // Merge times from actual blocks
+      const enriched: CompactifyItem[] = result.items.map((item) => {
+        const block = dayBlocks.find((b) => b.id === item.id);
+        return {
+          ...item,
+          start_time: block?.start_time ?? '',
+          end_time: block?.end_time ?? '',
+        };
+      });
+
+      return { items: enriched, summary: result.summary || '' };
+    } catch (err) {
+      console.error('[compactifyDay] Gemini failed:', err);
+      // Fallback: drop the highest energy-cost activities
+      const sorted = [...dayBlocks].sort(
+        (a, b) => (b.energy_cost_estimate ?? 5) - (a.energy_cost_estimate ?? 5)
+      );
+      const dropCount = Math.max(1, Math.floor(sorted.length * 0.35));
+      const dropIds = new Set(sorted.slice(0, dropCount).map((b) => b.id));
+
+      const items: CompactifyItem[] = dayBlocks.map((b) => ({
+        id: b.id,
+        place_name: b.place_name,
+        start_time: b.start_time,
+        end_time: b.end_time,
+        action: dropIds.has(b.id) ? 'drop' as const : 'keep' as const,
+        reason: dropIds.has(b.id) ? 'High energy cost — save it for a better day' : 'Fits your vibe',
+      }));
+
+      return {
+        items,
+        summary: "We trimmed the most draining activities so you can breathe. You've still got a great day ahead.",
+      };
+    }
   },
 }));

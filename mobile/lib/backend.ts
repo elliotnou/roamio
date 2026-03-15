@@ -145,3 +145,13 @@ export async function requestCommunitySupportPlaces(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function curateTripItineraryViaBackend(
+  tripId: string,
+  options: { replace_existing: boolean }
+) {
+  return backendFetch<{ activity_blocks: ActivityBlock[] }>(`/trips/${tripId}/curate`, {
+    method: 'POST',
+    body: JSON.stringify(options),
+  });
+}
